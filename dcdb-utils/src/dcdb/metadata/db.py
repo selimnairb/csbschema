@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
+from datetime import datetime
 
 from dcdb.metadata import VesselMetadataKey, VesselMetadata
 
@@ -29,7 +30,7 @@ def get_entries_for_unique_vessel_id(cur: sqlite3.Cursor, unique_vessel_id: str,
         results = cur.execute('SELECT * from vessels WHERE unique_vessel_id=?', (unique_vessel_id,))
     for result in results.fetchall():
         key = VesselMetadataKey(result[0],
-                                result[1])
+                                datetime.fromisoformat(result[1]))
         value = VesselMetadata(key,
                                result[2],
                                json.loads(result[3]))

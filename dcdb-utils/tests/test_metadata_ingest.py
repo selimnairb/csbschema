@@ -11,9 +11,8 @@ from fixtures import data_path, temp_path
 
 def test_load_vessel_metadata(data_path):
     doc_path_ex1: Path = data_path / 'example1'
-
     vessel_meta: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1)
-    assert len(vessel_meta) == 5
+    assert len(vessel_meta) == 4
 
 
 def test_write_vessel_metadata_to_db(data_path, temp_path):
@@ -34,6 +33,28 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
 
         write_vessel_metadata_to_db(cur, vessel_meta)
         entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
-        assert len(entries) == 2
+        assert len(entries) == 1
+
+        # Now ingest a file with the same metadata as an existing entry, but with a later start time.
+        # This should result in no change to the database
+        existing_entry = entries[0]
+        doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
+        vessel_meta_newer: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_newer)
+        write_vessel_metadata_to_db(cur, vessel_meta_newer)
+        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        assert len(new_entries) == 1
+        new_entry = new_entries[0]
+        assert new_entry.key.obs_time == existing_entry.key.obs_time
+
+        # Now ingest a file with the same metadata as an existing entry, but with an older start time.
+        # This should result the older start time being added to the db
+        doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
+        vessel_meta_older: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_older)
+        write_vessel_metadata_to_db(cur, vessel_meta_older)
+        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        assert len(new_entries) == 1
+        new_entry = new_entries[0]
+        assert new_entry.key.obs_time < existing_entry.key.obs_time
+
     finally:
         db.close()

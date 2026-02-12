@@ -66,12 +66,12 @@ def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: dict[Vessel
         if len(entries) == 0:
             # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
             db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
-        elif len(entries) >= 1:
+        elif len(entries) > 1:
             # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
             raise Exception(f"Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
         else:
             entry = entries[0]
-            if k.obs_time < entry.obs_time:
+            if k.obs_time < entry.key.obs_time:
                 # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
                 # Update vessel.obs_time = new_obs_time
                 db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
