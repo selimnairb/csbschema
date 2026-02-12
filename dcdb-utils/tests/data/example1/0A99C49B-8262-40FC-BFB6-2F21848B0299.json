@@ -1,0 +1,65 @@
+{
+  "platform": {
+    "uniqueID": "PGS-834f85c2-0999-11eb-a100-98be942a5b5a",
+    "name": "Ramform Tethys",
+    "sensors": [
+      {
+        "type": "Sounder",
+        "make": "Kongsberg Simrad",
+        "model": "EA600",
+        "Sounder Draft": 6.9,
+        "Sounder Transducer": "Triple Freq 12/38/200kHz",
+        "Sounder Draft Applied": false
+      },
+      {
+        "type": "DGNSS",
+        "make": "Fugro Starfix",
+        "model": "Starfix XP2"
+      }
+    ],
+    "correctors": {
+      "sounderDraft": 6.9,
+      "sounderDraftUnitOfMeasure": "meters",
+      "sounderDraftApplied": false,
+      "Uncertainty of Sounder Draft": 0.5,
+      "longitudinalOffsetFromGNSStoSounder": 11.4,
+      "longitudinalOffsetUnitOfMeasure": "meters",
+      "lateralOffsetFromGNSSStoSounder": 0,
+      "lateralOffsetUnitOfMeasure": "meters",
+      "positionOffsetsApplied": false,
+      "soundSpeed": 1500,
+      "soundSpeedUnitOfMeasure": "m/s"
+    },
+    "lengthUnitOfMeasure": "meters",
+    "length": 104,
+    "type": "Seismic Vessel",
+    "IDType": "IMO",
+    "IDNumber": 9676888
+  },
+  "time": {
+    "startTime": 1770058800000,
+    "endTime": 1770058800000
+  },
+  "fileType": "xyz",
+  "submissionInfo": {
+    "traceId": "ea0234c6-186d-4e81-8fd6-58d1c911ce4a",
+    "submissionType": "archive",
+    "resolvedPlatformName": "Ramform Tethys",
+    "provisionedOrgName": "PGS",
+    "providerId": "PGS",
+    "platformId": "834f85c2-0999-11eb-a100-98be942a5b5a",
+    "year": "2026",
+    "timeCode": "20260202193210566111",
+    "simplificationTolerance": 0.001
+  },
+  "dataProcessed": false,
+  "convention": "CSB 2.0",
+  "depthUnits": "meters",
+  "timeUnits": "ISO 8601",
+  "providerContactPoint": {
+    "orgName": "PGS",
+    "email": "oystein.johansen@pgs.com",
+    "logger": "Orca",
+    "loggerVersion": "1.14"
+  }
+}

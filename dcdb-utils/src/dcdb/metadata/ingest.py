@@ -5,6 +5,7 @@ import hashlib
 
 from ..metadata import VesselMetadataKey
 from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_keys
+from .db import get_entries_for_unique_vessel_id
 
 
 def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
@@ -23,9 +24,7 @@ def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
         if uniqueId is None:
             print(f"No unique ID for file {str(doc)}, skipping...")
             continue
-
         # print(f"Unique Id for file {str(doc)} is {uniqueId}")
-
         try:
             start_time, end_time = get_start_end_times(doc_data)
         except ValueError as e:
@@ -35,9 +34,7 @@ def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
             print(
                 f"Expected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
             continue
-
         # print(f"start, end time for file {str(doc)} is {start_time}, {end_time}.")
-
         # print(f"raw doc_meta: {json.dumps(doc_meta)}\n\n")
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
         # print(f"sorted doc_meta: {json.dumps(doc_meta)}\n\n")
@@ -50,14 +47,14 @@ def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
     return vessel_meta
 
 
-def write_vessel_metadata_to_db(vessel_meta: dict[VesselMetadataKey, dict], db_cur: sqlite3.Cursor):
+def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: dict[VesselMetadataKey, dict]):
     for k, v in vessel_meta.items():
         m = hashlib.sha3_256()
         metadata: str = json.dumps(v)
         m.update(bytes(metadata, 'utf-8'))
-        metadata_hash: str = m.hexdigest()
-        data = [k.unique_vessel_id, k.obs_time, metadata_hash, metadata]
-        # TODO: Implement create-update logic
+        md_hash: str = m.hexdigest()
+        data = [k.unique_vessel_id, k.obs_time, md_hash, metadata]
+        # Create-update logic is as follows
         #  - If no vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
         #  - If a vessel entry exists for this (unique_vessel_id, hash):
         #    - if new.obs_time < vessel.obs_time:
@@ -65,4 +62,17 @@ def write_vessel_metadata_to_db(vessel_meta: dict[VesselMetadataKey, dict], db_c
         #    - else:
         #      - Ignore update
         #  - If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
-        db_cur.execute("INSERT INTO vessels VALUES(?, ?, ?, ?)", data)
+        entries = get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
+        if len(entries) == 0:
+            # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
+            db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
+        elif len(entries) >= 1:
+            # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
+            raise Exception(f"Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
+        else:
+            entry = entries[0]
+            if k.obs_time < entry.obs_time:
+                # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
+                # Update vessel.obs_time = new_obs_time
+                db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
+                               (k.obs_time, k.unique_vessel_id, md_hash))
