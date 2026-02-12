@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -55,6 +56,18 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.obs_time < existing_entry.key.obs_time
+
+        # Finally, test the case where a new metadata entry for an existing vessel is received
+        # that has different metadata, but the same start time -- this should result in the database
+        # not allowing the metadata to be inserted.
+        doc_path_ex1_diff_hash: Path = data_path / 'example1-same-start-different-hash'
+        vessel_meta_diff_hash: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_diff_hash)
+        exception_thrown = False
+        try:
+            write_vessel_metadata_to_db(cur, vessel_meta_diff_hash)
+        except sqlite3.IntegrityError:
+            exception_thrown = True
+        assert exception_thrown
 
     finally:
         db.close()

@@ -13,7 +13,8 @@ def create_metadata_db(db_file: Path):
         BEGIN;
         CREATE TABLE 
            vessels(unique_vessel_id TEXT, obs_time DATETIME, hash TEXT, metadata JSON, 
-                   PRIMARY KEY(unique_vessel_id, hash));
+                   PRIMARY KEY(unique_vessel_id, hash),
+                   CONSTRAINT vessels_uv_id_obs_time_constr UNIQUE (unique_vessel_id, obs_time));
         CREATE INDEX IF NOT EXISTS vessels_uv_id_idx ON vessels (unique_vessel_id); 
         COMMIT;    
         ''')
