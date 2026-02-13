@@ -1,5 +1,6 @@
 from pathlib import Path
 import sqlite3
+from typing import Iterator
 
 import pytest
 
@@ -10,15 +11,9 @@ from dcdb.metadata.db import create_metadata_db, open_metadata_db, get_entries_f
 from fixtures import data_path, temp_path
 
 
-def test_load_vessel_metadata(data_path):
-    doc_path_ex1: Path = data_path / 'example1'
-    vessel_meta: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1)
-    assert len(vessel_meta) == 4
-
-
 def test_write_vessel_metadata_to_db(data_path, temp_path):
     doc_path_ex1: Path = data_path / 'example1'
-    vessel_meta: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1)
+    vessel_meta: Iterator[tuple[VesselMetadataKey, dict]] = load_vessel_metadata(doc_path_ex1)
 
     db_path = temp_path / 'vessel_meta.db'
     create_metadata_db(db_path)

@@ -2,17 +2,19 @@ import json
 import sqlite3
 from pathlib import Path
 import hashlib
+from typing import Iterator
+import sys
 
 from ..metadata import VesselMetadataKey
 from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_keys
 from .db import get_entries_for_unique_vessel_id
 
 
-def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
-    vessel_meta: dict[VesselMetadataKey, dict] = {}
-
+def load_vessel_metadata(doc_root: Path, *,
+                         verbose: bool = False) -> Iterator[tuple[VesselMetadataKey, dict]]:
     for doc in doc_root.glob('*.json'):
-        # print(str(doc))
+        if verbose:
+            sys.stdout.write(f"Attempting to read file {str(doc)}...")
         with doc.open(mode='rt') as f:
             doc_data: dict = json.load(f)
 
@@ -42,13 +44,14 @@ def load_vessel_metadata(doc_root: Path) -> dict[VesselMetadataKey, dict]:
             unique_vessel_id=uniqueId,
             obs_time=start_time
         )
-        vessel_meta[key] = doc_meta
+        if verbose:
+            sys.stdout.write('done.\n')
+        yield key, doc_meta
 
-    return vessel_meta
 
-
-def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: dict[VesselMetadataKey, dict]):
-    for k, v in vessel_meta.items():
+def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
+                                skip_errors: bool = False):
+    for k, v in vessel_meta:
         m = hashlib.sha3_256()
         metadata: str = json.dumps(v)
         m.update(bytes(metadata, 'utf-8'))
@@ -62,17 +65,26 @@ def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: dict[Vessel
         #    - else:
         #      - Ignore update
         #  - If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
-        entries = get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
-        if len(entries) == 0:
-            # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
-            db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
-        elif len(entries) > 1:
-            # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
-            raise Exception(f"Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
-        else:
-            entry = entries[0]
-            if k.obs_time < entry.key.obs_time:
-                # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
-                # Update vessel.obs_time = new_obs_time
-                db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
-                               (k.obs_time, k.unique_vessel_id, md_hash))
+        try:
+            entries = get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
+            if len(entries) == 0:
+                # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
+                db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
+            elif len(entries) > 1:
+                # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
+                raise Exception(f"Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
+            else:
+                entry = entries[0]
+                if k.obs_time < entry.key.obs_time:
+                    # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
+                    # Update vessel.obs_time = new_obs_time
+                    db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
+                                   (k.obs_time, k.unique_vessel_id, md_hash))
+        except sqlite3.IntegrityError as e:
+            if not skip_errors:
+                raise e
+            else:
+                print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
+                       "\tthat has different metadata, but the same start time as an entry already in the database.\n"
+                       "\tSince this lead to ambiguous metadata, this metadata entry will be skipped. Data was:\n"
+                       f"\t\t{data}, continuing to process the next file..."))
