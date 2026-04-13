@@ -10,6 +10,24 @@ from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_
 from .db import get_entries_for_unique_vessel_id
 
 
+def round_numeric(meta: dict|list, *,
+                  exclude_keys: tuple = ('time', 'fileType', 'submissionInfo', 'dataProcessed')):
+    if isinstance(meta, dict):
+        for k, v in meta.items():
+            if k in exclude_keys:
+                continue
+            if isinstance(v, dict|list):
+                round_numeric(v, exclude_keys=exclude_keys)
+            elif isinstance(v, float):
+                meta[k] = round(v, 3)
+    elif isinstance(meta, list):
+        for i, e in enumerate(meta):
+            if isinstance(e, dict|list):
+                round_numeric(e, exclude_keys=exclude_keys)
+            elif isinstance(e, float):
+                meta[i] = round(e, 3)
+
+
 def load_vessel_metadata(doc_root: Path, *,
                          verbose: bool = False) -> Iterator[tuple[VesselMetadataKey, dict]]:
     for doc in doc_root.glob('*.json'):
@@ -36,9 +54,10 @@ def load_vessel_metadata(doc_root: Path, *,
             print(
                 f"Expected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
             continue
-        # print(f"start, end time for file {str(doc)} is {start_time}, {end_time}.")
-        # print(f"raw doc_meta: {json.dumps(doc_meta)}\n\n")
+        # Sort metadata so that hashing is consistent for the same set of metadata
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
+        # Round numeric values in metadata to normalize essentially similar metadata
+        round_numeric(doc_meta)
         # print(f"sorted doc_meta: {json.dumps(doc_meta)}\n\n")
         key = VesselMetadataKey(
             unique_vessel_id=uniqueId,

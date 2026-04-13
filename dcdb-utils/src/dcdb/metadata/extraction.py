@@ -21,7 +21,8 @@ def sort_dict_by_keys(input: dict, output: dict, *,
             continue
         if isinstance(v, dict):
             output[k] = {}
-            sort_dict_by_keys(v, output[k])
+            sort_dict_by_keys(v, output[k],
+                              exclude_keys=exclude_keys)
         elif isinstance(v, list):
             output[k] = []
             sort_dict_list_by_keys(v, output[k])
