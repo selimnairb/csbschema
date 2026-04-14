@@ -11,6 +11,7 @@ import argparse
 import pathlib
 
 from .index import index_dcdb_metadata
+from .ingest import DataIngestStats
 
 def main():
     parser = argparse.ArgumentParser(prog='IndexDCDBMetadata',
@@ -28,8 +29,10 @@ def main():
     parser.add_argument('--skip-errors', action='store_true', default=False,
                         help='If set, treat errors as a warning and continue processing')
     args = parser.parse_args()
-    index_dcdb_metadata(args.source, args.db_path,
-                        overwrite=args.overwrite, verbose=args.verbose, skip_errors=args.skip_errors)
+    stats: DataIngestStats = index_dcdb_metadata(args.source, args.db_path,
+                                                 overwrite=args.overwrite, verbose=args.verbose, skip_errors=args.skip_errors)
+    if args.verbose:
+        print(stats)
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,9 @@
 import json
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 import hashlib
-from typing import Iterator
+from typing import Iterator, Sequence
 import sys
 
 import json_stream.base
@@ -91,14 +92,30 @@ def load_vessel_metadata(doc_root: Path, *,
         yield key, doc_meta
 
 
+@dataclass
+class DataIngestStats:
+    records_total: int = 0
+    records_written: int = 0
+    records_warning: int = 0
+    records_error: int = 0
+
+
+def hash_metadata(md: dict, *,
+                  exclude_keys: Sequence[str] = ('providerContactPoint.loggerVersion')) -> str:
+    m = hashlib.sha3_256()
+    metadata: str = json.dumps(md)
+    m.update(bytes(metadata, 'utf-8'))
+    return m.hexdigest()
+
+
 def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
-                                skip_errors: bool = False):
+                                skip_errors: bool = False) -> DataIngestStats:
+    stats = DataIngestStats()
     db_cur: sqlite3.Cursor = db.cursor()
     for k, v in vessel_meta:
-        m = hashlib.sha3_256()
+        stats.records_total += 1
+        md_hash = hash_metadata(v)
         metadata: str = json.dumps(v)
-        m.update(bytes(metadata, 'utf-8'))
-        md_hash: str = m.hexdigest()
         data = [k.unique_vessel_id, k.obs_time, md_hash, metadata]
         # Create-update logic is as follows
         #  - If no vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
@@ -113,8 +130,10 @@ def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tu
             if len(entries) == 0:
                 # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
                 db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
+                stats.records_written += 1
             elif len(entries) > 1:
                 # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
+                stats.records_error += 1
                 raise Exception(f"ERROR: Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
             else:
                 entry = entries[0]
@@ -123,6 +142,7 @@ def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tu
                     # Update vessel.obs_time = new_obs_time
                     db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
                                    (k.obs_time, k.unique_vessel_id, md_hash))
+                    stats.records_written += 1
         except sqlite3.IntegrityError as e:
             if not skip_errors:
                 raise e
@@ -136,3 +156,5 @@ def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tu
                        f"\t\t{metadata}\nDB entry was:\n"
                        f"\t\t{result[0]}\n"
                        f"\tError was: {str(e)}, continuing to process the next file..."))
+                stats.records_warning += 1
+    return stats

@@ -27,7 +27,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(entries) == 0
 
-        write_vessel_metadata_to_db(cur, vessel_meta)
+        write_vessel_metadata_to_db(db, vessel_meta)
         entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(entries) == 1
 
@@ -35,7 +35,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # This should result in no change to the database.
         existing_entry = entries[0]
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
-        write_vessel_metadata_to_db(cur, load_vessel_metadata(doc_path_ex1_newer))
+        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_newer))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -45,7 +45,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # Now ingest a file with the same metadata as an existing entry, but with an older start time.
         # This should result in the older start time being added to the db.
         doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
-        write_vessel_metadata_to_db(cur, load_vessel_metadata(doc_path_ex1_older))
+        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_older))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -58,7 +58,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(entries) == 1
         existing_entry = entries[0]
         doc_path_ex1_rounded: Path = data_path / 'example1-rounded-same-hash'
-        write_vessel_metadata_to_db(cur, load_vessel_metadata(doc_path_ex1_rounded))
+        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_rounded))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -72,7 +72,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         vessel_meta_diff_hash = load_vessel_metadata(doc_path_ex1_diff_hash)
         exception_thrown = False
         try:
-            write_vessel_metadata_to_db(cur, vessel_meta_diff_hash)
+            write_vessel_metadata_to_db(db, vessel_meta_diff_hash)
         except sqlite3.IntegrityError:
             exception_thrown = True
         assert exception_thrown
