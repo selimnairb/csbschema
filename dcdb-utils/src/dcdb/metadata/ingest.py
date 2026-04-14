@@ -28,14 +28,23 @@ def round_numeric(meta: dict|list, *,
                 meta[i] = round(e, 3)
 
 
+def iterate_json_objects(doc_root: Path, *,
+                         verbose: bool = False) -> Iterator[tuple[str, dict]]:
+    if doc_root.is_dir():
+        for doc in doc_root.glob('*.json'):
+            if verbose:
+                sys.stdout.write(f"Attempting to read file {str(doc)}...")
+            with doc.open(mode='rt') as f:
+                yield str(doc), json.load(f)
+    elif doc_root.is_file():
+        raise ValueError("Reading JSON objects from a single file is not yet supported")
+    else:
+        raise ValueError("doc_root must be either a directory or a file, but was neither.")
+
+
 def load_vessel_metadata(doc_root: Path, *,
                          verbose: bool = False) -> Iterator[tuple[VesselMetadataKey, dict]]:
-    for doc in doc_root.glob('*.json'):
-        if verbose:
-            sys.stdout.write(f"Attempting to read file {str(doc)}...")
-        with doc.open(mode='rt') as f:
-            doc_data: dict = json.load(f)
-
+    for doc, doc_data in iterate_json_objects(doc_root, verbose=verbose):
         try:
             uniqueId = get_unique_vessel_id(doc_data)
         except ValueError as e:
