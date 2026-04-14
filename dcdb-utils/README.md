@@ -4,50 +4,42 @@
 The scripts and tests require the following:
 
 - Python 3.12 or later
+- [json_stream](https://pypi.org/project/json-stream/)
 - [pytest](https://docs.pytest.org/en/stable/) (installation instructions are in the 'Running tests' section below)
 
-## Extracting DCDB dump of JSON metadata entries
-Before indexing CSB metadata exported from the DCDB database, it is preferable to dump JSON metadata 
-entries, which are dumped from the database as array elements in a single JSON file, to multiple JSON files, each
-containing one object representing the metadata for a single vessel-ingest event. To do so, we can use [jq](jqlang.org):
-```shell
-jq -r '.[] | @sh "cat>./csbMetadataPayload_20260201-20260210/$(uuidgen).json <<\\END", ., "END"' csbMetadataPayload_20260201-20260210.json \
-  | sh -s
-```
-
-where `csbMetadataPayload_20260201-20260210.json` is the name of the single JSON file dumped from the DCDB database,
-`./csbMetadataPayload_20260201-20260210` is the directory to write individual JSON files to, and `uuidgen` is the
-macOS cli command to create a UUID (you could substitute this with `python3 -m uuid` on Python 3.12 or above, though
-this will be a bit slower).
-
 ## Indexing metadata
-Once you've extracted the DCDB dump of JSON metadata entries into multiple JSON files, you can then index the CSB 
-metadata in an SQLite3 database by running the following Python script from the [src](./src) directory:
+The DCDB metadata indexer can read DCDB metadata from a single JSON file (containing an array of JSON objects at its 
+root) efficiently using `json_stream`, so there is no need to extract metadata objects into separate files. To index 
+DCDB metadata from a single JSON file in an SQLite3 database by running the following Python script from the 
+[src](./src) directory:
 ```shell
-python3 -m dcdb.metadata \
-  ../local/csbMetadataPayload_20260201-20260210 \
-  ../local/csbMetadataPayload_20260201-20260210.sqlite3 \
-  --verbose --overwrite --skip-errors
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325.json \
+  ../local/csbMetadataPayload_20170101-20260325.sqlite3 \
+  --verbose --overwrite --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325.log
+...
+...
+...
+python3 -m dcdb.metadata ../local/csbMetadataPayload_20170101-20260325.json    42.88s user 0.45s system 97% cpu 44.443 total
+tee ../local/csbMetadataPayload_20170101-20260325.log  0.01s user 0.46s system 1% cpu 44.442 total
 ```
 
-where `../local/csbMetadataPayload_20260201-20260210` is the directory containing individual JSON files, and
-`../local/csbMetadataPayload_20260201-20260210.sqlite3` is the file to write SQLite3 database to. The other options
-are described using the `--help` option:
+The other options are described using the `--help` option:
 ```shell
-$ python3 -m dcdb.metadata --help
-usage: IndexDCDBMetadata [-h] [--overwrite] [--verbose] [--skip-errors] source_directory db_path
+python3 -m dcdb.metadata --help
+usage: IndexDCDBMetadata [-h] [--overwrite] [--verbose] [--skip-errors] source db_path
 
 Index DCDB metadata in JSON format, writing to SQLite3 database
 
 positional arguments:
-  source_directory  Path to directory containing one or more JSON files containing DCDB ingest metadata
-  db_path           Path representing file to write SQLite3 database to
+  source         Path to a single JSON file containing a JSON array of object representing DCDB ingest metadata entries or a directory containing one or more JSON files containing DCDB ingest metadata.
+  db_path        Path representing file to write SQLite3 database to
 
 options:
-  -h, --help        show this help message and exit
-  --overwrite       Overwrite database (if exists). If not set, database will be updated if it already exists
-  --verbose         Produce verbose output for diagnostics
-  --skip-errors     If set, treat errors as a warning and continue processing
+  -h, --help     show this help message and exit
+  --overwrite    Overwrite database (if exists). If not set, database will be updated if it already exists
+  --verbose      Produce verbose output for diagnostics
+  --skip-errors  If set, treat errors as a warning and continue processing
 ```
 
 ## Using the database

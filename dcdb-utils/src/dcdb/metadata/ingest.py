@@ -5,6 +5,8 @@ import hashlib
 from typing import Iterator
 import sys
 
+import json_stream.base
+
 from ..metadata import VesselMetadataKey
 from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_keys
 from .db import get_entries_for_unique_vessel_id
@@ -37,7 +39,18 @@ def iterate_json_objects(doc_root: Path, *,
             with doc.open(mode='rt') as f:
                 yield str(doc), json.load(f)
     elif doc_root.is_file():
-        raise ValueError("Reading JSON objects from a single file is not yet supported")
+        doc = str(doc_root)
+        with doc_root.open(mode='rt') as f:
+            data = json_stream.load(f)
+            if isinstance(data, json_stream.base.TransientStreamingJSONObject):
+                # The file contains a single JSON object at its root, yield it
+                yield doc, json_stream.to_standard_types(data)
+            elif isinstance(data, json_stream.base.TransientStreamingJSONList):
+                # The file contains a JSON array at its root, iterate elements to yield them as dicts
+                for i, d in enumerate(data):
+                    yield f"{doc}[{i}]", json_stream.to_standard_types(d)
+            else:
+                raise ValueError(f"Expected either a JSON object or list at the root of {doc}, but found {type(data)}.")
     else:
         raise ValueError("doc_root must be either a directory or a file, but was neither.")
 
@@ -53,15 +66,16 @@ def load_vessel_metadata(doc_root: Path, *,
         if uniqueId is None:
             print(f"No unique ID for file {str(doc)}, skipping...")
             continue
-        # print(f"Unique Id for file {str(doc)} is {uniqueId}")
+        if verbose:
+            sys.stdout.write(f"Processing vessel metadata for {uniqueId} in file {str(doc)}...")
         try:
             start_time, end_time = get_start_end_times(doc_data)
         except ValueError as e:
-            print(f"Unable to read start,end time for file {str(doc)} due to error {str(e)}, skipping...")
+            print(f"\n\tUnable to read start,end time for file {str(doc)} due to error {str(e)}, skipping...")
             continue
         if start_time is None or end_time is None:
             print(
-                f"Expected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
+                f"\n\tExpected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
             continue
         # Sort metadata so that hashing is consistent for the same set of metadata
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
