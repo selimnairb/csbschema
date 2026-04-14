@@ -61,21 +61,21 @@ def load_vessel_metadata(doc_root: Path, *,
         try:
             uniqueId = get_unique_vessel_id(doc_data)
         except ValueError as e:
-            print(f"Unable to read unique ID for file {str(doc)} due to error {str(e)}, skipping...")
+            print(f"WARNING: Unable to read unique ID for file {str(doc)} due to error {str(e)}, skipping...")
             continue
         if uniqueId is None:
-            print(f"No unique ID for file {str(doc)}, skipping...")
+            print(f"WARNING: No unique ID for file {str(doc)}, skipping...")
             continue
         if verbose:
             sys.stdout.write(f"Processing vessel metadata for {uniqueId} in file {str(doc)}...")
         try:
             start_time, end_time = get_start_end_times(doc_data)
         except ValueError as e:
-            print(f"\n\tUnable to read start,end time for file {str(doc)} due to error {str(e)}, skipping...")
+            print(f"\n\tWARNING: Unable to read start,end time for file {str(doc)} due to error {str(e)}, skipping...")
             continue
         if start_time is None or end_time is None:
             print(
-                f"\n\tExpected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
+                f"\n\tWARNING: Expected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
             continue
         # Sort metadata so that hashing is consistent for the same set of metadata
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
@@ -91,8 +91,9 @@ def load_vessel_metadata(doc_root: Path, *,
         yield key, doc_meta
 
 
-def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
+def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
                                 skip_errors: bool = False):
+    db_cur: sqlite3.Cursor = db.cursor()
     for k, v in vessel_meta:
         m = hashlib.sha3_256()
         metadata: str = json.dumps(v)
@@ -114,7 +115,7 @@ def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: Iterator[tu
                 db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
             elif len(entries) > 1:
                 # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
-                raise Exception(f"Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
+                raise Exception(f"ERROR: Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
             else:
                 entry = entries[0]
                 if k.obs_time < entry.key.obs_time:
@@ -126,7 +127,12 @@ def write_vessel_metadata_to_db(db_cur: sqlite3.Cursor, vessel_meta: Iterator[tu
             if not skip_errors:
                 raise e
             else:
+                c = db_cur.execute('SELECT metadata FROM vessels WHERE unique_vessel_id=? AND obs_time=?',
+                                        (k.unique_vessel_id, k.obs_time))
+                result = c.fetchone()
                 print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
-                       "\tthat has different metadata, but the same start time as an entry already in the database.\n"
+                       f"\tthat has different metadata, but the same start time ({k.obs_time}) as an entry already in the database.\n"
                        "\tSince this lead to ambiguous metadata, this metadata entry will be skipped. Data was:\n"
-                       f"\t\t{data}, continuing to process the next file..."))
+                       f"\t\t{metadata}\nDB entry was:\n"
+                       f"\t\t{result[0]}\n"
+                       f"\tError was: {str(e)}, continuing to process the next file..."))

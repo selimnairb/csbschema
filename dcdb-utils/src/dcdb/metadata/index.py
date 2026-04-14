@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sqlite3
 
 from .ingest import load_vessel_metadata, write_vessel_metadata_to_db
 from .db import create_metadata_db, open_metadata_db
@@ -19,10 +20,9 @@ def index_dcdb_metadata(source: Path, db_path: Path, *,
 
     db = None
     try:
-        db = open_metadata_db(db_path)
-        cur = db.cursor()
+        db: sqlite3.Connection = open_metadata_db(db_path)
         # Lazy-load metadata documents and write to database
-        write_vessel_metadata_to_db(cur,
+        write_vessel_metadata_to_db(db,
                                     load_vessel_metadata(source, verbose=verbose),
                                     skip_errors=skip_errors)
         db.commit()
