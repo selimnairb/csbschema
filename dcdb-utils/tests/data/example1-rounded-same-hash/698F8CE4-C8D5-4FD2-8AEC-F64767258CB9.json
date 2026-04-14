@@ -1,0 +1,46 @@
+{
+  "platform": {
+    "uniqueID": "AQM-687ce9f49cea48-68471861",
+    "sensors": [
+      {
+        "type": "Sounder",
+        "draft": 0
+      }
+    ],
+    "length": 13.106,
+    "correctors": {
+      "draftApplied": true,
+      "positionReferencePoint": "GNSS",
+      "positionOffsetsDocumented": false,
+      "dataProcessed": false
+    },
+    "shipDraft": 1.219,
+    "shipHeight": 4.572,
+    "shipBeam": 4.115
+  },
+  "time": {
+    "startTime": 1769112731000,
+    "endTime": 1769113847000
+  },
+  "fileType": "geojson",
+  "submissionInfo": {
+    "traceId": "6f2eedc8-f7a3-4999-a13f-df8ab22b7313",
+    "submissionType": "archive",
+    "resolvedPlatformName": "Anonymous",
+    "provisionedOrgName": "AquaMap",
+    "providerId": "AQM",
+    "platformId": "687ce9f49cea48-68471861",
+    "year": "2026",
+    "timeCode": "20260201000035977581",
+    "simplificationTolerance": 0.001
+  },
+  "dataProcessed": false,
+  "convention": "GeoJSON CSB 3.0",
+  "dataLicense": "CC0 1.0",
+  "providerContactPoint": {
+    "email": "support@aquamap.app",
+    "orgName": "GEC srl",
+    "logger": "Aqua Map",
+    "loggerVersion": "iOS - 53.0"
+  }
+}

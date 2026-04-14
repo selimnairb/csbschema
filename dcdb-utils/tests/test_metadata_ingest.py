@@ -32,7 +32,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(entries) == 1
 
         # Now ingest a file with the same metadata as an existing entry, but with a later start time.
-        # This should result in no change to the database
+        # This should result in no change to the database.
         existing_entry = entries[0]
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
         vessel_meta_newer: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_newer)
@@ -41,9 +41,10 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.obs_time == existing_entry.key.obs_time
+        assert new_entry.hash == existing_entry.hash
 
         # Now ingest a file with the same metadata as an existing entry, but with an older start time.
-        # This should result the older start time being added to the db
+        # This should result in the older start time being added to the db.
         doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
         vessel_meta_older: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_older)
         write_vessel_metadata_to_db(cur, vessel_meta_older)
@@ -51,6 +52,21 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.obs_time < existing_entry.key.obs_time
+        assert new_entry.hash == existing_entry.hash
+
+        # Now ingest a file with the same, though rounded, metadata and a newer start time.
+        # This should result in no change to the database.
+        entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        assert len(entries) == 1
+        existing_entry = entries[0]
+        doc_path_ex1_rounded: Path = data_path / 'example1-rounded-same-hash'
+        vessel_meta_rounded: dict[VesselMetadataKey, dict] = load_vessel_metadata(doc_path_ex1_rounded)
+        write_vessel_metadata_to_db(cur, vessel_meta_rounded)
+        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        assert len(new_entries) == 1
+        new_entry = new_entries[0]
+        assert new_entry.key.obs_time == existing_entry.key.obs_time
+        assert new_entry.hash == existing_entry.hash
 
         # Finally, test the case where a new metadata entry for an existing vessel is received
         # that has different metadata, but the same start time -- this should result in the database
