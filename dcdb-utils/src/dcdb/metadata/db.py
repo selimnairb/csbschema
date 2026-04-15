@@ -12,7 +12,7 @@ def create_metadata_db(db_file: Path):
         cur.executescript('''
         BEGIN;
         CREATE TABLE 
-           vessels(unique_vessel_id TEXT, obs_time DATETIME, hash TEXT, metadata JSON, 
+           vessels(unique_vessel_id TEXT, obs_time INTEGER, hash TEXT, metadata JSON, 
                    PRIMARY KEY(unique_vessel_id, hash),
                    CONSTRAINT vessels_uv_id_obs_time_constr UNIQUE (unique_vessel_id, obs_time));
         CREATE INDEX IF NOT EXISTS vessels_uv_id_idx ON vessels (unique_vessel_id); 
@@ -31,7 +31,7 @@ def get_entries_for_unique_vessel_id(cur: sqlite3.Cursor, unique_vessel_id: str,
         results = cur.execute('SELECT * from vessels WHERE unique_vessel_id=?', (unique_vessel_id,))
     for result in results.fetchall():
         key = VesselMetadataKey(result[0],
-                                datetime.fromisoformat(result[1]))
+                                result[1])
         value = VesselMetadata(key,
                                result[2],
                                json.loads(result[3]))

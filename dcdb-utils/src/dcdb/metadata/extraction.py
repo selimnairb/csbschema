@@ -47,25 +47,17 @@ def get_unique_vessel_id(data: dict) -> str|None:
             return uniqueVesselId
     return None
 
-def parse_timestamp(time_in: int) -> datetime:
-    if not isinstance(time_in, int):
-        raise ValueError(f"Expected input time {time_in} to be of type int, but it was of type {type(time_in)}")
-    seconds, ms = divmod(time_in, 1000)
-    dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
-    delta_ms = timedelta(milliseconds=ms)
-    return dt + delta_ms
-
-def get_start_end_times(data: dict) -> tuple[datetime, datetime]|tuple[None, None]:
+def get_start_end_times(data: dict) -> tuple[int, int]|tuple[None, None]:
     if 'time' in data:
         time_block = data['time']
         if 'startTime' not in time_block or 'endTime' not in time_block:
             return None, None
         try:
-            start_time = parse_timestamp(time_block['startTime'])
+            start_time = time_block['startTime']
         except ValueError:
             return None, None
         try:
-            end_time = parse_timestamp(time_block['endTime'])
+            end_time = time_block['endTime']
         except ValueError:
             return None, None
         return start_time, end_time

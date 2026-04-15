@@ -72,12 +72,15 @@ def load_vessel_metadata(doc_root: Path, *,
             sys.stdout.write(f"Processing vessel metadata for {uniqueId} in file {str(doc)}...")
         try:
             start_time, end_time = get_start_end_times(doc_data)
+            if start_time < 0:
+                print(f"\n\tWARNING: Encountered start time < 0 ({start_time}) for {uniqueId} for file {str(doc)}, skipping...")
+                continue
         except ValueError as e:
-            print(f"\n\tWARNING: Unable to read start,end time for file {str(doc)} due to error {str(e)}, skipping...")
+            print(f"\n\tWARNING: Unable to read start,end time for {uniqueId} for file {str(doc)} due to error {str(e)}, skipping...")
             continue
         if start_time is None or end_time is None:
             print(
-                f"\n\tWARNING: Expected start and end time for file {str(doc)} to not be None, but one of them was None, skipping...")
+                f"\n\tWARNING: Expected start and end time for {uniqueId} for file {str(doc)} to not be None, but one of them was None, skipping...")
             continue
         # Sort metadata so that hashing is consistent for the same set of metadata
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
