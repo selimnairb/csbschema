@@ -1,3 +1,4 @@
+import copy
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -100,10 +101,45 @@ class DataIngestStats:
     records_error: int = 0
 
 
+def remove_key(d: dict, key_compound: str):
+    """
+    Removes a key or a nested key (if present) from a dictionary.
+
+    This function deletes a key-value pair from a dictionary. If the key to be
+    removed is nested within the dictionary, it can be specified in a compound
+    form separated by dots (e.g., "key1.key2.key3"). The function will traverse
+    the dictionary hierarchy and remove the specified key when found. If the key
+    is not found, no error will be raised.
+
+    Args:
+        d (dict): The dictionary from which the key will be removed.
+        key_compound (str): A dot-separated string representing the key or
+            nested key to remove.
+    """
+    try:
+        key_components = key_compound.split('.')
+        num_components = len(key_components)
+        if num_components == 1:
+            del d[key_components[0]]
+        else:
+            tmp_dict = d[key_components[0]]
+            component_count: int = 1
+            for component in key_components[1:]:
+                component_count += 1
+                if component_count >= num_components:
+                    del tmp_dict[component]
+                else:
+                    tmp_dict = tmp_dict[component]
+    except KeyError:
+        ...
+
 def hash_metadata(md: dict, *,
-                  exclude_keys: Sequence[str] = ('providerContactPoint.loggerVersion')) -> str:
+                  exclude_keys: Sequence[str] = ('providerContactPoint.loggerVersion',)) -> str:
     m = hashlib.sha3_256()
-    metadata: str = json.dumps(md)
+    md_cpy: dict = copy.deepcopy(md)
+    for excluded in exclude_keys:
+        remove_key(md_cpy, excluded)
+    metadata: str = json.dumps(md_cpy)
     m.update(bytes(metadata, 'utf-8'))
     return m.hexdigest()
 
