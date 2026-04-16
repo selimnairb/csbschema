@@ -201,20 +201,20 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                     # The submit timecode of the new metadata record is newer than what is in the database,
                     # so we likely want to use this record, but first, let's make sure it's not materially worse
                     # than what has already been encountered
-                    #
-                    # First, look for the non-standard field "platform.shipDraft", don't allow draft to be set
-                    # from > 0 to 0 and don't allow a larger draft to replace a smaller draft. Again, both metadata
-                    # records have the same start time, so would apply to the same range of observations, so we
-                    # want to err on the side of a smaller draft value since this would result in shoaler depths
-                    # after correcting for draft.
                     print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record timecode {k.submit_time_code}")
                     update_metadata: bool = True
                     if 'platform' in v:
-                        if 'shipDraft' in v['platform']:
+                        v_platform = v['platform']
+                        # First, look for the non-standard field "platform.shipDraft", don't allow draft to be set
+                        # from >0 to 0 and don't allow a larger draft to replace a smaller draft. Again, both metadata
+                        # records have the same start time, so would apply to the same range of observations, so we
+                        # want to err on the side of a smaller draft value since this would result in shoaler depths
+                        # after correcting for draft.
+                        if 'shipDraft' in v_platform:
                             if 'platform' in md_extant:
                                 if 'shipDraft' in md_extant['platform']:
                                     ext_draft = md_extant['platform']['shipDraft']
-                                    new_draft = v['platform']['shipDraft']
+                                    new_draft = v_platform['shipDraft']
                                     if ext_draft > 0:
                                         if new_draft == 0:
                                             # Don't allow draft to be set from > 0 to 0
@@ -222,6 +222,30 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                                         elif ext_draft < new_draft:
                                             # Don't allow a larger draft to replace a smaller draft
                                             update_metadata = False
+                        # Second, look for the non-standard platform.sensors.type="Sounder", with peer
+                        # platform.sensors.draft, i.e.:
+                        # "sensors": [
+                        #       {
+                        #         "draft": 0.518,
+                        #         "type": "Sounder"
+                        #       }
+                        #     ]
+                        # Don't allow the sounder draft to be set from >0 to 0.
+                        if 'sensors' in v_platform:
+                            v_sounder_draft: float = 0.0
+                            ext_sounder_draft: float = 0.0
+                            for s in v_platform['sensors']:
+                                if s['type'] == 'Sounder':
+                                    v_sounder_draft = s.get('draft', 0.0)
+                            if 'platform' in md_extant:
+                                if 'sensors' in md_extant['platform']:
+                                    for s in md_extant['platform']['sensors']:
+                                        if s['type'] == 'Sounder':
+                                            ext_sounder_draft = s.get('draft', 0.0)
+                            if v_sounder_draft == 0 and ext_sounder_draft > 0:
+                                # Don't allow the sounder draft to be set from >0 to 0.
+                                update_metadata = False
+
                     if update_metadata:
                         print(f"\t\tUpdating metadata record in database from:\n"
                               f"\t\t{str(md_extant)}\n"
