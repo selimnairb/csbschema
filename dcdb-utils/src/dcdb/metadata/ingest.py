@@ -11,8 +11,7 @@ import json_stream.base
 
 from ..metadata import VesselMetadataKey
 from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_keys
-from .db import get_entries_for_unique_vessel_id
-
+from . import db
 
 def round_numeric(meta: dict|list, *,
                   exclude_keys: tuple = ('time', 'fileType', 'submissionInfo', 'dataProcessed')):
@@ -68,6 +67,13 @@ def load_vessel_metadata(doc_root: Path, *,
         if uniqueId is None:
             print(f"WARNING: No unique ID for file {str(doc)}, skipping...")
             continue
+        if 'submissionInfo' not in doc_data:
+            print(f"WARNING: Expected 'submissionInfo' in metadata but none was found. Skipping record. Data was: {str(doc)}")
+            continue
+        if 'timeCode' not in doc_data['submissionInfo']:
+            print(f"WARNING: Expected 'timeCode' in 'submissionInfo' metadata, but none was found. Skipping record. Data was: {str(doc)}")
+            continue
+        submit_time_code: str = doc_data['submissionInfo']['timeCode']
         if verbose:
             sys.stdout.write(f"Processing vessel metadata for {uniqueId} in file {str(doc)}...")
         try:
@@ -89,7 +95,8 @@ def load_vessel_metadata(doc_root: Path, *,
         # print(f"sorted doc_meta: {json.dumps(doc_meta)}\n\n")
         key = VesselMetadataKey(
             unique_vessel_id=uniqueId,
-            obs_time=start_time
+            obs_time=start_time,
+            submit_time_code=submit_time_code
         )
         if verbose:
             sys.stdout.write('done.\n')
@@ -147,15 +154,14 @@ def hash_metadata(md: dict, *,
     return m.hexdigest()
 
 
-def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
+def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
                                 skip_errors: bool = False) -> DataIngestStats:
     stats = DataIngestStats()
-    db_cur: sqlite3.Cursor = db.cursor()
+    db_cur: sqlite3.Cursor = conn.cursor()
     for k, v in vessel_meta:
         stats.records_total += 1
         md_hash = hash_metadata(v)
         metadata: str = json.dumps(v)
-        data = [k.unique_vessel_id, k.obs_time, md_hash, metadata]
         # Create-update logic is as follows
         #  - If no vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
         #  - If a vessel entry exists for this (unique_vessel_id, hash):
@@ -165,10 +171,11 @@ def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tu
         #      - Ignore update
         #  - If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
         try:
-            entries = get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
+            entries = db.get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
             if len(entries) == 0:
                 # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
-                db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
+                # db_cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?)', data)
+                db.add_entry_for_vessel(db_cur, k.unique_vessel_id, k.obs_time, k.submit_time_code, md_hash, metadata)
                 stats.records_written += 1
             elif len(entries) > 1:
                 # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
@@ -179,21 +186,23 @@ def write_vessel_metadata_to_db(db: sqlite3.Connection, vessel_meta: Iterator[tu
                 if k.obs_time < entry.key.obs_time:
                     # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
                     # Update vessel.obs_time = new_obs_time
-                    db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
-                                   (k.obs_time, k.unique_vessel_id, md_hash))
+                    # db_cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
+                    #                (k.obs_time, k.unique_vessel_id, md_hash))
+                    db.update_entry_for_vessel(db_cur, k.obs_time, k.unique_vessel_id, md_hash)
                     stats.records_written += 1
         except sqlite3.IntegrityError as e:
             if not skip_errors:
                 raise e
             else:
-                c = db_cur.execute('SELECT metadata FROM vessels WHERE unique_vessel_id=? AND obs_time=?',
-                                        (k.unique_vessel_id, k.obs_time))
-                result = c.fetchone()
+                # c = db_cur.execute('SELECT metadata FROM vessels WHERE unique_vessel_id=? AND obs_time=?',
+                #                         (k.unique_vessel_id, k.obs_time))
+                # result = c.fetchone()
+                md = db.get_metadata_for_unique_vessel_id_and_obs_time(db_cur, k.unique_vessel_id, k.obs_time)
                 print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
                        f"\tthat has different metadata, but the same start time ({k.obs_time}) as an entry already in the database.\n"
                        "\tSince this lead to ambiguous metadata, this metadata entry will be skipped. Data was:\n"
                        f"\t\t{metadata}\nDB entry was:\n"
-                       f"\t\t{result[0]}\n"
+                       f"\t\t{md}\n"
                        f"\tError was: {str(e)}, continuing to process the next file..."))
                 stats.records_warning += 1
     return stats

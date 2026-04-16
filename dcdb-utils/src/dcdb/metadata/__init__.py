@@ -6,6 +6,7 @@ from datetime import datetime
 class VesselMetadataKey:
     unique_vessel_id: str
     obs_time: int
+    submit_time_code: str
 
 @dataclass
 class VesselMetadata:
