@@ -179,7 +179,8 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
             elif len(entries) > 1:
                 # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
                 stats.records_error += 1
-                raise Exception(f"ERROR: Expected at most one vessel metadata entry for unique vessel_id {k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
+                raise Exception("ERROR: Expected at most one vessel metadata entry for unique vessel ID "
+                                f"{k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
             else:
                 entry = entries[0]
                 if k.obs_time < entry.key.obs_time:
@@ -192,6 +193,10 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                 raise e
             else:
                 md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_obs_time(db_cur, k.unique_vessel_id, k.obs_time)
+                if sub_time_cd_extant is None or hash_extant is None:
+                    stats.records_error += 1
+                    raise Exception(f"ERROR: expected metadata to exist for unique vessel ID {k.unique_vessel_id} "
+                                    f"at obs time {k.obs_time}, but it did not.")
                 print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
                        f"\tthat has different metadata, but the same start time ({k.obs_time}) "
                        "as an entry already in the database. "))
@@ -201,15 +206,16 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                     # The submit timecode of the new metadata record is newer than what is in the database,
                     # so we likely want to use this record, but first, let's make sure it's not materially worse
                     # than what has already been encountered
-                    print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record timecode {k.submit_time_code}")
+                    print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record "
+                          f"timecode {k.submit_time_code}")
                     update_metadata: bool = True
                     if 'platform' in v:
                         v_platform = v['platform']
-                        # First, look for the non-standard field "platform.shipDraft", don't allow draft to be set
-                        # from >0 to 0 and don't allow a larger draft to replace a smaller draft. Again, both metadata
-                        # records have the same start time, so would apply to the same range of observations, so we
-                        # want to err on the side of a smaller draft value since this would result in shoaler depths
-                        # after correcting for draft.
+                        # First, look for field "platform.shipDraft", don't allow draft to be set from >0 to 0 and
+                        # don't allow a larger draft to replace a smaller draft. Again, both metadata records have
+                        # the same start time, so would apply to the same range of observations, so we want to err
+                        # on the side of a smaller draft value since this would result in shoaler depths after
+                        # correcting for draft.
                         if 'shipDraft' in v_platform:
                             if 'platform' in md_extant:
                                 if 'shipDraft' in md_extant['platform']:
@@ -218,12 +224,20 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                                     if ext_draft > 0:
                                         if new_draft == 0:
                                             # Don't allow draft to be set from > 0 to 0
+                                            print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to 0")
                                             update_metadata = False
                                         elif ext_draft < new_draft:
                                             # Don't allow a larger draft to replace a smaller draft
+                                            print(f"\t\tSkipping update, reason: Don't allow a larger draft to replace a smaller draft")
                                             update_metadata = False
-                        # Second, look for the non-standard platform.sensors.type="Sounder", with peer
-                        # platform.sensors.draft, i.e.:
+                        elif 'platform' in md_extant:
+                            if 'shipDraft' in md_extant['platform']:
+                                if md_extant['platform']['shipDraft'] > 0:
+                                    # Don't allow draft to be set from > 0 to NOTHING
+                                    print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to NOTHING")
+                                    update_metadata = False
+
+                        # Second, look for platform.sensors.type="Sounder", with peer platform.sensors.draft, i.e.:
                         # "sensors": [
                         #       {
                         #         "draft": 0.518,
@@ -244,6 +258,7 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                                             ext_sounder_draft = s.get('draft', 0.0)
                             if v_sounder_draft == 0 and ext_sounder_draft > 0:
                                 # Don't allow the sounder draft to be set from >0 to 0.
+                                print(f"\t\tSkipping update, reason: Don't allow the sounder draft to be set from >0 to 0.")
                                 update_metadata = False
 
                     if update_metadata:
@@ -251,7 +266,7 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                               f"\t\t{str(md_extant)}\n"
                               "\t\tTo:\n"
                               f"\t\t{metadata}\n")
-                        db.update_metadata_for_vessel(db_cur, k.unique_vessel_id, k.submit_time_code, md_hash,
+                        db.update_metadata_for_vessel(db_cur, k.unique_vessel_id, md_hash, k.submit_time_code,
                                                       metadata, hash_extant)
                         stats.records_written += 1
                         continue

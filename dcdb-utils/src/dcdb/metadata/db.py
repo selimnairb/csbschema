@@ -40,11 +40,11 @@ def update_obs_time_for_vessel(cur: sqlite3.Cursor,
                 (obs_time, unique_vessel_id, hash))
 
 def update_metadata_for_vessel(cur: sqlite3.Cursor,
-                              unique_vessel_id: str,
-                              hash_new: str,
-                              submit_time_code: str,
-                              metadata: str,
-                              hash_extant: str):
+                               unique_vessel_id: str,
+                               hash_new: str,
+                               submit_time_code: str,
+                               metadata: str,
+                               hash_extant: str):
     try:
         cur.execute('UPDATE vessels SET metadata=?, hash=?, submit_time_code=? WHERE unique_vessel_id=? AND hash=?',
                     (metadata, hash_new, submit_time_code, unique_vessel_id, hash_extant))
