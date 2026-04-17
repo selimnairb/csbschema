@@ -22,9 +22,10 @@ def index_dcdb_metadata(source: Path, db_path: Path, *,
     try:
         db: sqlite3.Connection = open_metadata_db(db_path)
         # Lazy-load metadata documents and write to database
-        stats = write_vessel_metadata_to_db(db,
-                                            load_vessel_metadata(source, verbose=verbose),
-                                            skip_errors=skip_errors)
+        stats = DataIngestStats()
+        write_vessel_metadata_to_db(db, stats,
+                                    load_vessel_metadata(source, stats, verbose=verbose),
+                                    skip_errors=skip_errors)
         db.commit()
         return stats
     finally:
