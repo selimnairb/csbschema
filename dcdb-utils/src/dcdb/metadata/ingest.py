@@ -201,11 +201,9 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                        f"\tthat has different metadata, but the same start time ({k.obs_time}) "
                        "as an entry already in the database. "))
                 if k.submit_time_code > sub_time_cd_extant:
-                    # if k.unique_vessel_id == 'ROSEP-48fa5fe0-5a79-4dab-b334-d44ac4c4d2bc':
-                    #     import pdb; pdb.set_trace()
                     # The submit timecode of the new metadata record is newer than what is in the database,
                     # so we likely want to use this record, but first, let's make sure it's not materially worse
-                    # than what has already been encountered
+                    # than what has already been encountered...
                     print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record "
                           f"timecode {k.submit_time_code}")
                     update_metadata: bool = True
@@ -223,17 +221,14 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                                     new_draft = v_platform['shipDraft']
                                     if ext_draft > 0:
                                         if new_draft == 0:
-                                            # Don't allow draft to be set from > 0 to 0
                                             print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to 0")
                                             update_metadata = False
                                         elif ext_draft < new_draft:
-                                            # Don't allow a larger draft to replace a smaller draft
                                             print(f"\t\tSkipping update, reason: Don't allow a larger draft to replace a smaller draft")
                                             update_metadata = False
                         elif 'platform' in md_extant:
                             if 'shipDraft' in md_extant['platform']:
                                 if md_extant['platform']['shipDraft'] > 0:
-                                    # Don't allow draft to be set from > 0 to NOTHING
                                     print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to NOTHING")
                                     update_metadata = False
 
@@ -257,7 +252,6 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, vessel_meta: Iterator[
                                         if s['type'] == 'Sounder':
                                             ext_sounder_draft = s.get('draft', 0.0)
                             if v_sounder_draft == 0 and ext_sounder_draft > 0:
-                                # Don't allow the sounder draft to be set from >0 to 0.
                                 print(f"\t\tSkipping update, reason: Don't allow the sounder draft to be set from >0 to 0.")
                                 update_metadata = False
 
