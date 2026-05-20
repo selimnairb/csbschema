@@ -12,9 +12,9 @@ def create_metadata_db(db_file: Path):
         cur.executescript('''
         BEGIN;
         CREATE TABLE 
-           vessels(unique_vessel_id TEXT, obs_time INTEGER, submit_time_code TEXT, hash TEXT, metadata JSON, 
+           vessels(unique_vessel_id TEXT, start_time INTEGER, submit_time_code TEXT, hash TEXT, metadata JSON, 
                    PRIMARY KEY(unique_vessel_id, hash),
-                   CONSTRAINT vessels_uv_id_obs_time_constr UNIQUE (unique_vessel_id, obs_time));
+                   CONSTRAINT vessels_uv_id_start_time_constr UNIQUE (unique_vessel_id, start_time));
         CREATE INDEX IF NOT EXISTS vessels_uv_id_idx ON vessels (unique_vessel_id);
         CREATE INDEX IF NOT EXISTS vessels_submit_time_cd_idx ON vessels (submit_time_code); 
         COMMIT;    
@@ -25,19 +25,19 @@ def open_metadata_db(db_file: Path) -> sqlite3.Connection:
 
 def add_entry_for_vessel(cur: sqlite3.Cursor,
                          unique_vessel_id: str,
-                         obs_time: int,
+                         start_time: int,
                          submit_time_code: str,
                          hash: str,
                          metadata: str):
     cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?, ?)',
-                (unique_vessel_id, obs_time, submit_time_code, hash, metadata))
+                (unique_vessel_id, start_time, submit_time_code, hash, metadata))
 
-def update_obs_time_for_vessel(cur: sqlite3.Cursor,
-                               obs_time: int,
+def update_start_time_for_vessel(cur: sqlite3.Cursor,
+                               start_time: int,
                                unique_vessel_id: str,
                                hash: str):
-    cur.execute('UPDATE vessels SET obs_time=? WHERE unique_vessel_id=? AND hash=?',
-                (obs_time, unique_vessel_id, hash))
+    cur.execute('UPDATE vessels SET start_time=? WHERE unique_vessel_id=? AND hash=?',
+                (start_time, unique_vessel_id, hash))
 
 def update_metadata_for_vessel(cur: sqlite3.Cursor,
                                unique_vessel_id: str,
@@ -69,11 +69,11 @@ def get_entries_for_unique_vessel_id(cur: sqlite3.Cursor, unique_vessel_id: str,
         entries.append(value)
     return entries
 
-def get_metadata_for_unique_vessel_id_and_obs_time(cur: sqlite3.Cursor,
+def get_metadata_for_unique_vessel_id_and_start_time(cur: sqlite3.Cursor,
                                                    unique_vessel_id: str,
-                                                   obs_time: int) -> tuple[dict, str|None, str|None]:
-    c = cur.execute('SELECT metadata, submit_time_code, hash FROM vessels WHERE unique_vessel_id=? AND obs_time=?',
-                       (unique_vessel_id, obs_time))
+                                                   start_time: int) -> tuple[dict, str|None, str|None]:
+    c = cur.execute('SELECT metadata, submit_time_code, hash FROM vessels WHERE unique_vessel_id=? AND start_time=?',
+                       (unique_vessel_id, start_time))
     result = c.fetchone()
     if result is None or len(result) < 1:
         return {}, None, None

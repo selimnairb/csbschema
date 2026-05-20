@@ -5,7 +5,7 @@ from datetime import datetime
 @dataclass(eq=True, frozen=True)
 class VesselMetadataKey:
     unique_vessel_id: str
-    obs_time: int
+    start_time: int
     submit_time_code: str
 
 @dataclass

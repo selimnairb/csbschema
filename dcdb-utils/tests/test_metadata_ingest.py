@@ -41,7 +41,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
-        assert new_entry.key.obs_time == existing_entry.key.obs_time
+        assert new_entry.key.start_time == existing_entry.key.start_time
         assert new_entry.hash == existing_entry.hash
 
         # Now ingest a file with the same metadata as an existing entry, but with an older start time.
@@ -52,7 +52,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
-        assert new_entry.key.obs_time < existing_entry.key.obs_time
+        assert new_entry.key.start_time < existing_entry.key.start_time
         assert new_entry.hash == existing_entry.hash
 
         # Now ingest a file with the same, though rounded, metadata and a newer start time.
@@ -66,7 +66,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
-        assert new_entry.key.obs_time == existing_entry.key.obs_time
+        assert new_entry.key.start_time == existing_entry.key.start_time
         assert new_entry.hash == existing_entry.hash
 
         # Finally, test the case where a new metadata entry for an existing vessel is received

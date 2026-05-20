@@ -104,7 +104,7 @@ def load_vessel_metadata(doc_root: Path,
         # print(f"sorted doc_meta: {json.dumps(doc_meta)}\n\n")
         key = VesselMetadataKey(
             unique_vessel_id=uniqueId,
-            obs_time=start_time,
+            start_time=start_time,
             submit_time_code=submit_time_code
         )
         if verbose:
@@ -171,18 +171,18 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
         md_hash = hash_metadata(v)
         metadata: str = json.dumps(v)
         # Create-update logic is as follows
-        #  - If no vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
+        #  - If no vessel entry exists for this (unique_vessel_id, start_time, hash) INSERT
         #  - If a vessel entry exists for this (unique_vessel_id, hash):
-        #    - if new.obs_time < vessel.obs_time:
-        #      - Update vessel.obs_time = new_obs_time
+        #    - if new.start_time < vessel.start_time:
+        #      - Update vessel.start_time = new_start_time
         #    - else:
         #      - Ignore update
         #  - If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
         try:
             entries = db.get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
             if len(entries) == 0:
-                # No vessel entry exists for this (unique_vessel_id, obs_time, hash) INSERT
-                db.add_entry_for_vessel(db_cur, k.unique_vessel_id, k.obs_time, k.submit_time_code, md_hash, metadata)
+                # No vessel entry exists for this (unique_vessel_id, start_time, hash) INSERT
+                db.add_entry_for_vessel(db_cur, k.unique_vessel_id, k.start_time, k.submit_time_code, md_hash, metadata)
                 stats.records_written += 1
             elif len(entries) > 1:
                 # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
@@ -191,22 +191,22 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
                                 f"{k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
             else:
                 entry = entries[0]
-                if k.obs_time < entry.key.obs_time:
-                    # A vessel entry exists for this (unique_vessel_id, hash) and new.obs_time < vessel.obs_time
-                    # Update vessel.obs_time = new_obs_time
-                    db.update_obs_time_for_vessel(db_cur, k.obs_time, k.unique_vessel_id, md_hash)
+                if k.start_time < entry.key.start_time:
+                    # A vessel entry exists for this (unique_vessel_id, hash) and new.start_time < vessel.start_time
+                    # Update vessel.start_time = new_start_time
+                    db.update_start_time_for_vessel(db_cur, k.start_time, k.unique_vessel_id, md_hash)
                     stats.records_written += 1
         except sqlite3.IntegrityError as e:
             if not skip_errors:
                 raise e
             else:
-                md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_obs_time(db_cur, k.unique_vessel_id, k.obs_time)
+                md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_start_time(db_cur, k.unique_vessel_id, k.start_time)
                 if sub_time_cd_extant is None or hash_extant is None:
                     stats.records_error += 1
                     raise Exception(f"ERROR: expected metadata to exist for unique vessel ID {k.unique_vessel_id} "
-                                    f"at obs time {k.obs_time}, but it did not.")
+                                    f"at obs time {k.start_time}, but it did not.")
                 print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
-                       f"\tthat has different metadata, but the same start time ({k.obs_time}) "
+                       f"\tthat has different metadata, but the same start time ({k.start_time}) "
                        "as an entry already in the database. "))
                 if k.submit_time_code > sub_time_cd_extant:
                     # The submit timecode of the new metadata record is newer than what is in the database,
