@@ -5,7 +5,7 @@ from typing import Iterator
 import pytest
 
 from dcdb.metadata import VesselMetadataKey
-from dcdb.metadata.ingest import load_vessel_metadata, write_vessel_metadata_to_db
+from dcdb.metadata.ingest import load_vessel_metadata, write_vessel_metadata_to_db, DataIngestStats
 from dcdb.metadata.db import create_metadata_db, open_metadata_db, get_entries_for_unique_vessel_id
 
 from fixtures import data_path, temp_path
@@ -13,7 +13,8 @@ from fixtures import data_path, temp_path
 
 def test_write_vessel_metadata_to_db(data_path, temp_path):
     doc_path_ex1: Path = data_path / 'example1'
-    vessel_meta: Iterator[tuple[VesselMetadataKey, dict]] = load_vessel_metadata(doc_path_ex1)
+    stats = DataIngestStats()
+    vessel_meta: Iterator[tuple[VesselMetadataKey, dict]] = load_vessel_metadata(doc_path_ex1, stats)
 
     db_path = temp_path / 'vessel_meta.db'
     create_metadata_db(db_path)
@@ -26,8 +27,8 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         unique_vessel_id: str = 'AQM-687ce9f49cea48-68471861'
         entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(entries) == 0
-
-        write_vessel_metadata_to_db(db, vessel_meta)
+        stats = DataIngestStats()
+        write_vessel_metadata_to_db(db, stats, vessel_meta)
         entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(entries) == 1
 
@@ -35,7 +36,8 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # This should result in no change to the database.
         existing_entry = entries[0]
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
-        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_newer))
+        stats = DataIngestStats()
+        write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_newer, stats))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -45,7 +47,8 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # Now ingest a file with the same metadata as an existing entry, but with an older start time.
         # This should result in the older start time being added to the db.
         doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
-        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_older))
+        stats = DataIngestStats()
+        write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_older, stats))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -58,7 +61,8 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(entries) == 1
         existing_entry = entries[0]
         doc_path_ex1_rounded: Path = data_path / 'example1-rounded-same-hash'
-        write_vessel_metadata_to_db(db, load_vessel_metadata(doc_path_ex1_rounded))
+        stats = DataIngestStats()
+        write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_rounded, stats))
         new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
@@ -69,10 +73,11 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # that has different metadata, but the same start time -- this should result in the database
         # not allowing the metadata to be inserted.
         doc_path_ex1_diff_hash: Path = data_path / 'example1-same-start-different-hash'
-        vessel_meta_diff_hash = load_vessel_metadata(doc_path_ex1_diff_hash)
+        stats = DataIngestStats()
+        vessel_meta_diff_hash = load_vessel_metadata(doc_path_ex1_diff_hash, stats)
         exception_thrown = False
         try:
-            write_vessel_metadata_to_db(db, vessel_meta_diff_hash)
+            write_vessel_metadata_to_db(db, stats, vessel_meta_diff_hash)
         except sqlite3.IntegrityError:
             exception_thrown = True
         assert exception_thrown
