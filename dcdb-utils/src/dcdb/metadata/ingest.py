@@ -173,11 +173,17 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
         metadata: str = json.dumps(v)
         # Create-update logic is as follows
         #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, submit_timecode, hash) ERROR
+        #  - Else, If a vessel entry exists for the same (unique_vessel_id, start_time, submit_timecode, hash)
+        #       but with a later end_time, the update existing entry with the later end_time
         #  - Else, INSERT
         try:
-            entries = db.get_metadata_entries(db_cur, k.unique_vessel_id, md_hash=md_hash)
+            entries = db.get_metadata_entries(db_cur, k.unique_vessel_id,
+                                              start_time=k.start_time,
+                                              end_time=k.end_time,
+                                              submit_timecode=k.submit_timecode,
+                                              md_hash=md_hash)
             if len(entries) > 0:
-                ...
+                raise NotImplemented()
             else:
                 # No vessel entry exists for this (unique_vessel_id, start_time, hash) INSERT
                 db.add_entry_for_vessel(db_cur, k.unique_vessel_id,

@@ -65,8 +65,8 @@ def add_entry_for_vessel(cur: sqlite3.Cursor,
 #         print(f"Caught {str(e)} in update_metadata_for_vessel...")
 
 def get_metadata_entries(cur: sqlite3.Cursor, unique_vessel_id: str, *,
-                         start_time: str | None = None,
-                         end_time: str | None = None,
+                         start_time: int | None = None,
+                         end_time: int | None = None,
                          submit_timecode: str | None = None,
                          md_hash: str | None = None) -> list[VesselMetadata]:
     entries = []
