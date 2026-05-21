@@ -33,13 +33,13 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(entries) == 1
 
         # Now ingest a file with the same metadata as an existing entry, but with a later start time.
-        # This should result in no change to the database.
+        # This should result in a second entry being added to the database.
         existing_entry = entries[0]
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_newer, stats))
         new_entries = get_metadata_entries(cur, unique_vessel_id)
-        assert len(new_entries) == 1
+        assert len(new_entries) == 2
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time
         assert new_entry.hash == existing_entry.hash
