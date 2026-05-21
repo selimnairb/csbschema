@@ -105,7 +105,8 @@ def load_vessel_metadata(doc_root: Path,
         key = VesselMetadataKey(
             unique_vessel_id=uniqueId,
             start_time=start_time,
-            submit_time_code=submit_time_code
+            end_time=end_time,
+            submit_timecode=submit_time_code
         )
         if verbose:
             sys.stdout.write('done.\n')
@@ -171,114 +172,102 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
         md_hash = hash_metadata(v)
         metadata: str = json.dumps(v)
         # Create-update logic is as follows
-        #  - If no vessel entry exists for this (unique_vessel_id, start_time, hash) INSERT
-        #  - If a vessel entry exists for this (unique_vessel_id, hash):
-        #    - if new.start_time < vessel.start_time:
-        #      - Update vessel.start_time = new_start_time
-        #    - else:
-        #      - Ignore update
-        #  - If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
+        #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, submit_timecode, hash) ERROR
+        #  - Else, INSERT
         try:
-            entries = db.get_entries_for_unique_vessel_id(db_cur, k.unique_vessel_id, md_hash)
-            if len(entries) == 0:
+            entries = db.get_metadata_entries(db_cur, k.unique_vessel_id, md_hash=md_hash)
+            if len(entries) > 0:
+                ...
+            else:
                 # No vessel entry exists for this (unique_vessel_id, start_time, hash) INSERT
-                db.add_entry_for_vessel(db_cur, k.unique_vessel_id, k.start_time, k.submit_time_code, md_hash, metadata)
+                db.add_entry_for_vessel(db_cur, k.unique_vessel_id,
+                                        k.start_time, k.end_time, k.submit_timecode, md_hash, metadata)
                 stats.records_written += 1
-            elif len(entries) > 1:
-                # If more than one vessel entry exists for this (unique_vessel_id, hash), ERROR
-                stats.records_error += 1
-                raise Exception("ERROR: Expected at most one vessel metadata entry for unique vessel ID "
-                                f"{k.unique_vessel_id} and hash {md_hash}, but found {len(entries)}")
-            else:
-                entry = entries[0]
-                if k.start_time < entry.key.start_time:
-                    # A vessel entry exists for this (unique_vessel_id, hash) and new.start_time < vessel.start_time
-                    # Update vessel.start_time = new_start_time
-                    db.update_start_time_for_vessel(db_cur, k.start_time, k.unique_vessel_id, md_hash)
-                    stats.records_written += 1
         except sqlite3.IntegrityError as e:
-            if not skip_errors:
-                raise e
-            else:
-                md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_start_time(db_cur, k.unique_vessel_id, k.start_time)
-                if sub_time_cd_extant is None or hash_extant is None:
-                    stats.records_error += 1
-                    raise Exception(f"ERROR: expected metadata to exist for unique vessel ID {k.unique_vessel_id} "
-                                    f"at obs time {k.start_time}, but it did not.")
-                print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
-                       f"\tthat has different metadata, but the same start time ({k.start_time}) "
-                       "as an entry already in the database. "))
-                if k.submit_time_code > sub_time_cd_extant:
-                    # The submit timecode of the new metadata record is newer than what is in the database,
-                    # so we likely want to use this record, but first, let's make sure it's not materially worse
-                    # than what has already been encountered...
-                    print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record "
-                          f"timecode {k.submit_time_code}")
-                    update_metadata: bool = True
-                    if 'platform' in v:
-                        v_platform = v['platform']
-                        # First, look for field "platform.shipDraft", don't allow draft to be set from >0 to 0 and
-                        # don't allow a larger draft to replace a smaller draft. Again, both metadata records have
-                        # the same start time, so would apply to the same range of observations, so we want to err
-                        # on the side of a smaller draft value since this would result in shoaler depths after
-                        # correcting for draft.
-                        if 'shipDraft' in v_platform:
-                            if 'platform' in md_extant:
-                                if 'shipDraft' in md_extant['platform']:
-                                    ext_draft = md_extant['platform']['shipDraft']
-                                    new_draft = v_platform['shipDraft']
-                                    if ext_draft > 0:
-                                        if new_draft == 0:
-                                            print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to 0")
-                                            update_metadata = False
-                                        elif ext_draft < new_draft:
-                                            print(f"\t\tSkipping update, reason: Don't allow a larger draft to replace a smaller draft")
-                                            update_metadata = False
-                        elif 'platform' in md_extant:
-                            if 'shipDraft' in md_extant['platform']:
-                                if md_extant['platform']['shipDraft'] > 0:
-                                    print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to NOTHING")
-                                    update_metadata = False
-
-                        # Second, look for platform.sensors.type="Sounder", with peer platform.sensors.draft, i.e.:
-                        # "sensors": [
-                        #       {
-                        #         "draft": 0.518,
-                        #         "type": "Sounder"
-                        #       }
-                        #     ]
-                        # Don't allow the sounder draft to be set from >0 to 0.
-                        if 'sensors' in v_platform:
-                            v_sounder_draft: float = 0.0
-                            ext_sounder_draft: float = 0.0
-                            for s in v_platform['sensors']:
-                                if s['type'] == 'Sounder':
-                                    v_sounder_draft = s.get('draft', 0.0)
-                            if 'platform' in md_extant:
-                                if 'sensors' in md_extant['platform']:
-                                    for s in md_extant['platform']['sensors']:
-                                        if s['type'] == 'Sounder':
-                                            ext_sounder_draft = s.get('draft', 0.0)
-                            if v_sounder_draft == 0 and ext_sounder_draft > 0:
-                                print(f"\t\tSkipping update, reason: Don't allow the sounder draft to be set from >0 to 0.")
-                                update_metadata = False
-
-                    if update_metadata:
-                        print(f"\t\tUpdating metadata record in database from:\n"
-                              f"\t\t{str(md_extant)}\n"
-                              "\t\tTo:\n"
-                              f"\t\t{metadata}\n")
-                        db.update_metadata_for_vessel(db_cur, k.unique_vessel_id, md_hash, k.submit_time_code,
-                                                      metadata, hash_extant)
-                        stats.records_written += 1
-                        continue
-                else:
-                    print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is NEWER than new record timecode {k.submit_time_code}")
-
-                print(("\t\tSKIPPING: Since this can lead to ambiguous metadata, this metadata entry will be skipped. "
-                       "New entry is:\n"
-                       f"\t\t{metadata}\n"
-                       "\t\tDB entry is:\n"
-                       f"\t\t{str(md_extant)}\n"
-                       f"\tError was: {str(e)}, continuing to process the next file..."))
-                stats.records_warning += 1
+            print(f"Encountered error: {e}, giving up...")
+            raise e
+            # if not skip_errors:
+            #     raise e
+            # else:
+            #     md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_start_time(db_cur, k.unique_vessel_id, k.start_time)
+            #     if sub_time_cd_extant is None or hash_extant is None:
+            #         stats.records_error += 1
+            #         raise Exception(f"ERROR: expected metadata to exist for unique vessel ID {k.unique_vessel_id} "
+            #                         f"at obs time {k.start_time}, but it did not.")
+            #     print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
+            #            f"\tthat has different metadata, but the same start time ({k.start_time}) "
+            #            "as an entry already in the database. "))
+            #     if k.submit_timecode > sub_time_cd_extant:
+            #         # The submit timecode of the new metadata record is newer than what is in the database,
+            #         # so we likely want to use this record, but first, let's make sure it's not materially worse
+            #         # than what has already been encountered...
+            #         print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record "
+            #               f"timecode {k.submit_timecode}")
+            #         update_metadata: bool = True
+            #         if 'platform' in v:
+            #             v_platform = v['platform']
+            #             # First, look for field "platform.shipDraft", don't allow draft to be set from >0 to 0 and
+            #             # don't allow a larger draft to replace a smaller draft. Again, both metadata records have
+            #             # the same start time, so would apply to the same range of observations, so we want to err
+            #             # on the side of a smaller draft value since this would result in shoaler depths after
+            #             # correcting for draft.
+            #             if 'shipDraft' in v_platform:
+            #                 if 'platform' in md_extant:
+            #                     if 'shipDraft' in md_extant['platform']:
+            #                         ext_draft = md_extant['platform']['shipDraft']
+            #                         new_draft = v_platform['shipDraft']
+            #                         if ext_draft > 0:
+            #                             if new_draft == 0:
+            #                                 print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to 0")
+            #                                 update_metadata = False
+            #                             elif ext_draft < new_draft:
+            #                                 print(f"\t\tSkipping update, reason: Don't allow a larger draft to replace a smaller draft")
+            #                                 update_metadata = False
+            #             elif 'platform' in md_extant:
+            #                 if 'shipDraft' in md_extant['platform']:
+            #                     if md_extant['platform']['shipDraft'] > 0:
+            #                         print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to NOTHING")
+            #                         update_metadata = False
+            #
+            #             # Second, look for platform.sensors.type="Sounder", with peer platform.sensors.draft, i.e.:
+            #             # "sensors": [
+            #             #       {
+            #             #         "draft": 0.518,
+            #             #         "type": "Sounder"
+            #             #       }
+            #             #     ]
+            #             # Don't allow the sounder draft to be set from >0 to 0.
+            #             if 'sensors' in v_platform:
+            #                 v_sounder_draft: float = 0.0
+            #                 ext_sounder_draft: float = 0.0
+            #                 for s in v_platform['sensors']:
+            #                     if s['type'] == 'Sounder':
+            #                         v_sounder_draft = s.get('draft', 0.0)
+            #                 if 'platform' in md_extant:
+            #                     if 'sensors' in md_extant['platform']:
+            #                         for s in md_extant['platform']['sensors']:
+            #                             if s['type'] == 'Sounder':
+            #                                 ext_sounder_draft = s.get('draft', 0.0)
+            #                 if v_sounder_draft == 0 and ext_sounder_draft > 0:
+            #                     print(f"\t\tSkipping update, reason: Don't allow the sounder draft to be set from >0 to 0.")
+            #                     update_metadata = False
+            #
+            #         if update_metadata:
+            #             print(f"\t\tUpdating metadata record in database from:\n"
+            #                   f"\t\t{str(md_extant)}\n"
+            #                   "\t\tTo:\n"
+            #                   f"\t\t{metadata}\n")
+            #             db.update_metadata_for_vessel(db_cur, k.unique_vessel_id, md_hash, k.submit_timecode,
+            #                                           metadata, hash_extant)
+            #             stats.records_written += 1
+            #             continue
+            #     else:
+            #         print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is NEWER than new record timecode {k.submit_timecode}")
+            #
+            #     print(("\t\tSKIPPING: Since this can lead to ambiguous metadata, this metadata entry will be skipped. "
+            #            "New entry is:\n"
+            #            f"\t\t{metadata}\n"
+            #            "\t\tDB entry is:\n"
+            #            f"\t\t{str(md_extant)}\n"
+            #            f"\tError was: {str(e)}, continuing to process the next file..."))
+            #     stats.records_warning += 1

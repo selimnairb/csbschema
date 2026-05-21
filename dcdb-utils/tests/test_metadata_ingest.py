@@ -6,7 +6,7 @@ import pytest
 
 from dcdb.metadata import VesselMetadataKey
 from dcdb.metadata.ingest import load_vessel_metadata, write_vessel_metadata_to_db, DataIngestStats
-from dcdb.metadata.db import create_metadata_db, open_metadata_db, get_entries_for_unique_vessel_id
+from dcdb.metadata.db import create_metadata_db, open_metadata_db, get_metadata_entries
 
 from fixtures import data_path, temp_path
 
@@ -25,11 +25,11 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         cur = db.cursor()
 
         unique_vessel_id: str = 'AQM-687ce9f49cea48-68471861'
-        entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(entries) == 0
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, vessel_meta)
-        entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(entries) == 1
 
         # Now ingest a file with the same metadata as an existing entry, but with a later start time.
@@ -38,7 +38,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_newer, stats))
-        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        new_entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time
@@ -49,7 +49,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_older, stats))
-        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        new_entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.start_time < existing_entry.key.start_time
@@ -57,13 +57,13 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
 
         # Now ingest a file with the same, though rounded, metadata and a newer start time.
         # This should result in no change to the database.
-        entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(entries) == 1
         existing_entry = entries[0]
         doc_path_ex1_rounded: Path = data_path / 'example1-rounded-same-hash'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_rounded, stats))
-        new_entries = get_entries_for_unique_vessel_id(cur, unique_vessel_id)
+        new_entries = get_metadata_entries(cur, unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time

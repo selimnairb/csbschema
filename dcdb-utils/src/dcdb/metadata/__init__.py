@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from datetime import datetime
 
 
 @dataclass(eq=True, frozen=True)
 class VesselMetadataKey:
     unique_vessel_id: str
     start_time: int
-    submit_time_code: str
+    end_time: int
+    submit_timecode: str
 
 @dataclass
 class VesselMetadata:
