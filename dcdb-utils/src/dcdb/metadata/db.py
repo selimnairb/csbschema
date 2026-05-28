@@ -1,8 +1,10 @@
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 import json
 from io import StringIO
 from enum import StrEnum
+from typing import Any
 
 from dcdb.metadata import VesselMetadataKey, VesselMetadata
 
@@ -25,8 +27,7 @@ def create_metadata_db(db_file: Path):
                 vessels(unique_vessel_id TEXT, start_time INTEGER, end_time INTEGER,
                         hash TEXT, metadata JSON,
                         PRIMARY KEY (unique_vessel_id, start_time, end_time),
-                        CONSTRAINT vessels_md_uniq UNIQUE (unique_vessel_id, start_time, end_time, submit_timecode, 
-                                                           hash));
+                        CONSTRAINT vessels_md_uniq UNIQUE (unique_vessel_id, start_time, end_time, hash));
             CREATE INDEX IF NOT EXISTS vessels_uv_id_idx ON vessels (unique_vessel_id);
             CREATE INDEX IF NOT EXISTS vessels_strt_tm_idx ON vessels (start_time);
             CREATE INDEX IF NOT EXISTS vessels_end_tm_idx ON vessels (end_time);
@@ -64,19 +65,99 @@ def update_vessel_entry(cur: sqlite3.Cursor,
                                   key: VesselMetadataKey,
                                   new_val: VesselMetadata):
     cur.execute('''
-                BEGIN;
                 UPDATE vessels SET start_time=?, 
                                    end_time=?,
                                    hash=?,
                                    metadata=?
                 WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
-                COMMIT;    
                 ''',
-                (new_val.key.start_time, new_val.key.end_time, new_val.hash, new_val.metadata,
+                (new_val.key.start_time, new_val.key.end_time, new_val.hash, json.dumps(new_val.metadata),
                            key.unique_vessel_id, key.start_time, key.end_time))
 
 
-def get_metadata_entries(cur: sqlite3.Cursor, unique_vessel_id: str, *,
+@dataclass
+class VesselEntryStat:
+    value: Any
+    key: VesselMetadataKey
+
+@dataclass
+class VesselEntrySummaryStats:
+    min_start_time: VesselEntryStat | None = None
+    max_start_time: VesselEntryStat | None = None
+    min_end_time: VesselEntryStat | None = None
+    max_end_time: VesselEntryStat | None = None
+
+
+def get_vessel_entry_stats(cur: sqlite3.Cursor, unique_vessel_id: str, md_hash: str) -> VesselEntrySummaryStats:
+    ret = VesselEntrySummaryStats()
+
+    # Get min start_time and PK of row that has it
+    results = cur.execute('''
+                SELECT min(start_time), unique_vessel_id, start_time, end_time
+                FROM vessels
+                WHERE unique_vessel_id = ?
+                  AND hash = ?;
+                ''',
+                (unique_vessel_id, md_hash))
+    r = results.fetchone()
+    ret.min_start_time = VesselEntryStat(
+        r[0],
+        VesselMetadataKey(r['unique_vessel_id'],
+                          r['start_time'],
+                          r['end_time'])
+    )
+    # Get max start_time and PK of row that has it
+    results = cur.execute('''
+                          SELECT max(start_time), unique_vessel_id, start_time, end_time
+                          FROM vessels
+                          WHERE unique_vessel_id = ?
+                            AND hash = ?;
+                          ''',
+                          (unique_vessel_id, md_hash))
+    r = results.fetchone()
+    ret.max_start_time = VesselEntryStat(
+        r[0],
+        VesselMetadataKey(r['unique_vessel_id'],
+                          r['start_time'],
+                          r['end_time'])
+    )
+    # Get min end_time and PK of row that has it
+    results = cur.execute('''
+                          SELECT min(end_time), unique_vessel_id, start_time, end_time
+                          FROM vessels
+                          WHERE unique_vessel_id = ?
+                            AND hash = ?;
+                          ''',
+                          (unique_vessel_id, md_hash))
+    r = results.fetchone()
+    ret.end_start_time = VesselEntryStat(
+        r[0],
+        VesselMetadataKey(r['unique_vessel_id'],
+                          r['start_time'],
+                          r['end_time'])
+    )
+    # Get max end_time and PK of row that has it
+    results = cur.execute('''
+                          SELECT max(end_time), unique_vessel_id, start_time, end_time
+                          FROM vessels
+                          WHERE unique_vessel_id = ?
+                            AND hash = ?;
+                          ''',
+                          (unique_vessel_id, md_hash))
+    r = results.fetchone()
+    ret.max_end_time = VesselEntryStat(
+        r[0],
+        VesselMetadataKey(r['unique_vessel_id'],
+                          r['start_time'],
+                          r['end_time'])
+    )
+
+    return ret
+
+
+def get_metadata_entries(cur: sqlite3.Cursor, *,
+                         unique_vessel_id: str | None = None,
+                         pred_unique_vessel_id: Predicate = Predicate.EQ,
                          start_time: int | None = None,
                          pred_start_time: Predicate = Predicate.EQ,
                          end_time: int | None = None,
@@ -86,8 +167,10 @@ def get_metadata_entries(cur: sqlite3.Cursor, unique_vessel_id: str, *,
     entries = []
     args = []
     builder = StringIO()
-    builder.write('SELECT * from vessels WHERE unique_vessel_id=?')
-    args.append(unique_vessel_id)
+    builder.write('SELECT * FROM vessels WHERE 1')
+    if unique_vessel_id:
+        builder.write(f" AND unique_vessel_id{str(pred_unique_vessel_id)}?")
+        args.append(unique_vessel_id)
     if start_time:
         builder.write(f" AND start_time{str(pred_start_time)}?")
         args.append(start_time)

@@ -164,13 +164,14 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
         metadata: str = json.dumps(v)
         # Create-update logic is as follows
         #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, hash): SKIP
-        #  If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
+        #  - If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
         #       but with an earlier end_time: SKIP
         #  - Else, If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
         #       but with a later end_time: UPDATE existing entry with the later end_time
         #  - Else, INSERT
+        updating: bool = False
         try:
-            entries = db.get_metadata_entries(db_cur, k.unique_vessel_id,
+            entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
                                               start_time=k.start_time,
                                               end_time=k.end_time,
                                               md_hash=md_hash)
@@ -184,9 +185,11 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
                 # Query all entries for this vessel with the current hash so that we can check for any
                 # updates that we can make to an existing record (because it covers an overlapping start/end
                 # time interval).
-                entries = db.get_metadata_entries(db_cur, k.unique_vessel_id,
+                entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
                                                   md_hash=md_hash)
                 if len(entries) > 0:
+                    stats: db.VesselEntryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
+
                     for e in entries:
                         # NOTE: This won't work as the integrity error will stop us from applying all of the sequential
                         # updates to reach the desired end state. We need to work out the desired end state, then
