@@ -171,46 +171,57 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
         #  - Else, INSERT
         updating: bool = False
         try:
+            # TODO: Change this to get just the number of entries
             entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
-                                              start_time=k.start_time,
-                                              end_time=k.end_time,
                                               md_hash=md_hash)
             if len(entries) > 0:
-                first = entries[0]
-                print(f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
-                      f"\tthat is identical, SKIPPING.\n\tExisting metadata is {first.metadata}\n"
-                      f"\tNew metadata is: {metadata}")
-                continue
-            else:
-                # Query all entries for this vessel with the current hash so that we can check for any
-                # updates that we can make to an existing record (because it covers an overlapping start/end
-                # time interval).
-                entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
-                                                  md_hash=md_hash)
-                if len(entries) > 0:
-                    stats: db.VesselEntryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
+                stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
+                deltas: dict = {}
+                if k.start_time < stats.min_start_time.value:
+                    old_key: VesselMetadataKey = stats.min_start_time.key
+                    new_key = VesselMetadataKey(
+                        old_key.unique_vessel_id,
+                        k.start_time,
+                        old_key.end_time
+                    )
+                    old_key_deltas = deltas.setdefault(old_key, set())
+                    old_key_deltas.add(new_key)
+                if k.end_time > stats.max_end_time.value:
+                    old_key: VesselMetadataKey = stats.max_end_time.key
+                    new_key = VesselMetadataKey(
+                        old_key.unique_vessel_id,
+                        old_key.start_time,
+                        k.end_time
+                    )
+                    old_key_deltas = deltas.setdefault(old_key, set())
+                    old_key_deltas.add(new_key)
 
-                    for e in entries:
-                        # NOTE: This won't work as the integrity error will stop us from applying all of the sequential
-                        # updates to reach the desired end state. We need to work out the desired end state, then
-                        # apply it to the DB once.
-                        if e.key.end_time < k.end_time:
-                            # A vessel entry exists for the same (unique_vessel_id, hash)
-                            # but with an earlier end_time: UPDATE the end_time
-                            updating = True
-                            db.update_vessel_entry(db_cur, k, e)
-                            updating = False
-                        if e.key.start_time > k.start_time:
-                            # A vessel entry exists for the same (unique_vessel_id, hash)
-                            # but with a later start_time: UPDATE the start_time
-                            updating = True
-                            db.update_vessel_entry(db_cur, k, e)
-                            updating = False
-                else:
-                    # No vessel entry exists for this (unique_vessel_id, hash) INSERT
-                    db.add_entry_for_vessel(db_cur, k.unique_vessel_id,
-                                            k.start_time, k.end_time, md_hash, metadata)
-                    stats.records_written += 1
+                for old_key, delta_set in deltas:
+                    new_key = VesselMetadataKey.coalesce(delta_set)
+                    # TODO: Update old_key to be new_key
+
+
+                # for e in entries:
+                #     # NOTE: This won't work as the integrity error will stop us from applying all of the sequential
+                #     # updates to reach the desired end state. We need to work out the desired end state, then
+                #     # apply it to the DB once.
+                #     if e.key.end_time < k.end_time:
+                #         # A vessel entry exists for the same (unique_vessel_id, hash)
+                #         # but with an earlier end_time: UPDATE the end_time
+                #         updating = True
+                #         db.update_vessel_entry(db_cur, k, e)
+                #         updating = False
+                #     if e.key.start_time > k.start_time:
+                #         # A vessel entry exists for the same (unique_vessel_id, hash)
+                #         # but with a later start_time: UPDATE the start_time
+                #         updating = True
+                #         db.update_vessel_entry(db_cur, k, e)
+                #         updating = False
+            else:
+                # No vessel entry exists for this (unique_vessel_id, hash) INSERT
+                db.add_entry_for_vessel(db_cur, k.unique_vessel_id,
+                                        k.start_time, k.end_time, md_hash, metadata)
+                stats.records_written += 1
         except sqlite3.IntegrityError as e:
             if updating:
                 # Got an integrity error while updating, which means the update we want to make

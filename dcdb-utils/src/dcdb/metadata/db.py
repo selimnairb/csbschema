@@ -130,7 +130,7 @@ def get_vessel_entry_stats(cur: sqlite3.Cursor, unique_vessel_id: str, md_hash: 
                           ''',
                           (unique_vessel_id, md_hash))
     r = results.fetchone()
-    ret.end_start_time = VesselEntryStat(
+    ret.min_end_time = VesselEntryStat(
         r[0],
         VesselMetadataKey(r['unique_vessel_id'],
                           r['start_time'],

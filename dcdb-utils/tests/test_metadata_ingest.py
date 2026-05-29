@@ -7,7 +7,7 @@ import pytest
 from dcdb.metadata import VesselMetadataKey
 from dcdb.metadata.ingest import load_vessel_metadata, write_vessel_metadata_to_db, DataIngestStats
 from dcdb.metadata.db import create_metadata_db, open_metadata_db, get_metadata_entries, \
-    get_vessel_entry_stats, VesselEntryStats
+    get_vessel_entry_stats, VesselEntrySummaryStats
 
 from fixtures import data_path, temp_path
 
@@ -36,7 +36,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         assert len(all_entries) == 4
 
         test_entry = all_entries[3]
-        stats: VesselEntryStats = get_vessel_entry_stats(cur, test_entry.key.unique_vessel_id, test_entry.hash)
+        entry_stats: VesselEntrySummaryStats = get_vessel_entry_stats(cur, test_entry.key.unique_vessel_id, test_entry.hash)
         # There's only one entry with this unique ID right now, so the stats are just the values of that entry...
         # assert stats.min_start_time == test_entry.key.start_time
         # assert stats.max_start_time == test_entry.key.start_time
