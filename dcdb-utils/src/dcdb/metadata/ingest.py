@@ -107,6 +107,7 @@ def load_vessel_metadata(doc_root: Path,
 class DataIngestStats:
     records_total: int = 0
     records_written: int = 0
+    records_updated: int = 0
     records_warning: int = 0
     records_error: int = 0
 
@@ -157,160 +158,54 @@ def hash_metadata(md: dict, *,
 def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
                                 skip_errors: bool = False):
     db_cur: sqlite3.Cursor = conn.cursor()
-    updated: bool = False
-    for k, v in vessel_meta:
-        stats.records_total += 1
-        md_hash = hash_metadata(v)
-        metadata: str = json.dumps(v)
-        # Create-update logic is as follows
-        #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, hash): SKIP
-        #  - If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
-        #       but with an earlier end_time: SKIP
-        #  - Else, If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
-        #       but with a later end_time: UPDATE existing entry with the later end_time
-        #  - Else, INSERT
-        updating: bool = False
-        try:
+    deltas: dict = {}
+    try:
+        for k, v in vessel_meta:
+            stats.records_total += 1
+            md_hash = hash_metadata(v)
+            metadata: str = json.dumps(v)
+            # Create-update logic is as follows:
+            #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, hash): SKIP
+            #  - If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
+            #       but with a later start time or earlier end_time: SKIP
+            #  - Else, If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
+            #       but with an earlier start_time or later end_time (or both): UPDATE existing entry
+            #  - Else, INSERT
             # TODO: Change this to get just the number of entries
             entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
                                               md_hash=md_hash)
             if len(entries) > 0:
-                stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
-                deltas: dict = {}
-                if k.start_time < stats.min_start_time.value:
-                    old_key: VesselMetadataKey = stats.min_start_time.key
+                entry_stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
+                if k.start_time < entry_stats.min_start_time.value:
+                    old_key: VesselMetadataKey = entry_stats.min_start_time.key
                     new_key = VesselMetadataKey(
                         old_key.unique_vessel_id,
                         k.start_time,
                         old_key.end_time
                     )
-                    old_key_deltas = deltas.setdefault(old_key, set())
-                    old_key_deltas.add(new_key)
-                if k.end_time > stats.max_end_time.value:
-                    old_key: VesselMetadataKey = stats.max_end_time.key
+                    deltas[old_key] = deltas.get(old_key, None) + new_key
+                if k.end_time > entry_stats.max_end_time.value:
+                    old_key: VesselMetadataKey = entry_stats.max_end_time.key
                     new_key = VesselMetadataKey(
                         old_key.unique_vessel_id,
                         old_key.start_time,
                         k.end_time
                     )
-                    old_key_deltas = deltas.setdefault(old_key, set())
-                    old_key_deltas.add(new_key)
-
-                for old_key, delta_set in deltas:
-                    new_key = VesselMetadataKey.coalesce(delta_set)
-                    # TODO: Update old_key to be new_key
-
-
-                # for e in entries:
-                #     # NOTE: This won't work as the integrity error will stop us from applying all of the sequential
-                #     # updates to reach the desired end state. We need to work out the desired end state, then
-                #     # apply it to the DB once.
-                #     if e.key.end_time < k.end_time:
-                #         # A vessel entry exists for the same (unique_vessel_id, hash)
-                #         # but with an earlier end_time: UPDATE the end_time
-                #         updating = True
-                #         db.update_vessel_entry(db_cur, k, e)
-                #         updating = False
-                #     if e.key.start_time > k.start_time:
-                #         # A vessel entry exists for the same (unique_vessel_id, hash)
-                #         # but with a later start_time: UPDATE the start_time
-                #         updating = True
-                #         db.update_vessel_entry(db_cur, k, e)
-                #         updating = False
+                    deltas[old_key] = deltas.get(old_key, None) + new_key
             else:
                 # No vessel entry exists for this (unique_vessel_id, hash) INSERT
                 db.add_entry_for_vessel(db_cur, k.unique_vessel_id,
                                         k.start_time, k.end_time, md_hash, metadata)
                 stats.records_written += 1
+        # TODO: Apply coalesced deltas
+        try:
+            # TODO: Update
+            stats.records_updated += 1
         except sqlite3.IntegrityError as e:
-            if updating:
-                # Got an integrity error while updating, which means the update we want to make
-                # already exists in the DB, so we can ignore...
-                ...
-            print(f"Encountered error: {e}, giving up...")
-            raise e
-            # if not skip_errors:
-            #     raise e
-            # else:
-            #     md_extant, sub_time_cd_extant, hash_extant = db.get_metadata_for_unique_vessel_id_and_start_time(db_cur, k.unique_vessel_id, k.start_time)
-            #     if sub_time_cd_extant is None or hash_extant is None:
-            #         stats.records_error += 1
-            #         raise Exception(f"ERROR: expected metadata to exist for unique vessel ID {k.unique_vessel_id} "
-            #                         f"at obs time {k.start_time}, but it did not.")
-            #     print((f"\tWARNING: A new metadata entry for existing vessel {k.unique_vessel_id} was received\n"
-            #            f"\tthat has different metadata, but the same start time ({k.start_time}) "
-            #            "as an entry already in the database. "))
-            #     if k.submit_timecode > sub_time_cd_extant:
-            #         # The submit timecode of the new metadata record is newer than what is in the database,
-            #         # so we likely want to use this record, but first, let's make sure it's not materially worse
-            #         # than what has already been encountered...
-            #         print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is OLDER than new record "
-            #               f"timecode {k.submit_timecode}")
-            #         update_metadata: bool = True
-            #         if 'platform' in v:
-            #             v_platform = v['platform']
-            #             # First, look for field "platform.shipDraft", don't allow draft to be set from >0 to 0 and
-            #             # don't allow a larger draft to replace a smaller draft. Again, both metadata records have
-            #             # the same start time, so would apply to the same range of observations, so we want to err
-            #             # on the side of a smaller draft value since this would result in shoaler depths after
-            #             # correcting for draft.
-            #             if 'shipDraft' in v_platform:
-            #                 if 'platform' in md_extant:
-            #                     if 'shipDraft' in md_extant['platform']:
-            #                         ext_draft = md_extant['platform']['shipDraft']
-            #                         new_draft = v_platform['shipDraft']
-            #                         if ext_draft > 0:
-            #                             if new_draft == 0:
-            #                                 print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to 0")
-            #                                 update_metadata = False
-            #                             elif ext_draft < new_draft:
-            #                                 print(f"\t\tSkipping update, reason: Don't allow a larger draft to replace a smaller draft")
-            #                                 update_metadata = False
-            #             elif 'platform' in md_extant:
-            #                 if 'shipDraft' in md_extant['platform']:
-            #                     if md_extant['platform']['shipDraft'] > 0:
-            #                         print(f"\t\tSkipping update, reason: Don't allow draft to be set from > 0 to NOTHING")
-            #                         update_metadata = False
-            #
-            #             # Second, look for platform.sensors.type="Sounder", with peer platform.sensors.draft, i.e.:
-            #             # "sensors": [
-            #             #       {
-            #             #         "draft": 0.518,
-            #             #         "type": "Sounder"
-            #             #       }
-            #             #     ]
-            #             # Don't allow the sounder draft to be set from >0 to 0.
-            #             if 'sensors' in v_platform:
-            #                 v_sounder_draft: float = 0.0
-            #                 ext_sounder_draft: float = 0.0
-            #                 for s in v_platform['sensors']:
-            #                     if s['type'] == 'Sounder':
-            #                         v_sounder_draft = s.get('draft', 0.0)
-            #                 if 'platform' in md_extant:
-            #                     if 'sensors' in md_extant['platform']:
-            #                         for s in md_extant['platform']['sensors']:
-            #                             if s['type'] == 'Sounder':
-            #                                 ext_sounder_draft = s.get('draft', 0.0)
-            #                 if v_sounder_draft == 0 and ext_sounder_draft > 0:
-            #                     print(f"\t\tSkipping update, reason: Don't allow the sounder draft to be set from >0 to 0.")
-            #                     update_metadata = False
-            #
-            #         if update_metadata:
-            #             print(f"\t\tUpdating metadata record in database from:\n"
-            #                   f"\t\t{str(md_extant)}\n"
-            #                   "\t\tTo:\n"
-            #                   f"\t\t{metadata}\n")
-            #             db.update_metadata_for_vessel(db_cur, k.unique_vessel_id, md_hash, k.submit_timecode,
-            #                                           metadata, hash_extant)
-            #             stats.records_written += 1
-            #             continue
-            #     else:
-            #         print(f"\t\tExisting metadata record timecode {sub_time_cd_extant} is NEWER than new record timecode {k.submit_timecode}")
-            #
-            #     print(("\t\tSKIPPING: Since this can lead to ambiguous metadata, this metadata entry will be skipped. "
-            #            "New entry is:\n"
-            #            f"\t\t{metadata}\n"
-            #            "\t\tDB entry is:\n"
-            #            f"\t\t{str(md_extant)}\n"
-            #            f"\tError was: {str(e)}, continuing to process the next file..."))
-            #     stats.records_warning += 1
+            # Got an integrity error while updating, which means the update we want to make
+            # already exists in the DB, so we can ignore...
+            print(f"WARNING: caught sqlite3.IntegrityError while updating, error was: {str(e)}")
+
+    except sqlite3.IntegrityError as e:
+        print(f"Encountered error: {e}, giving up...")
+        raise e

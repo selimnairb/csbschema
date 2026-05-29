@@ -20,6 +20,15 @@ class VesselMetadataKey:
             max(self.end_time, other.end_time)
         )
 
+    def __radd__(self, other):
+        if other is None:
+            return VesselMetadataKey(
+                self.unique_vessel_id,
+                self.start_time,
+                self.end_time
+            )
+        return self.__add__(other)
+
     @staticmethod
     def coalesce(keys: typing.Iterable[VesselMetadataKey]) -> VesselMetadataKey:
         return functools.reduce(lambda k1, k2: k1 + k2, keys)
