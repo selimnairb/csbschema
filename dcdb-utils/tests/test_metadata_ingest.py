@@ -26,17 +26,17 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         cur = db.cursor()
 
         unique_vessel_id: str = 'AQM-687ce9f49cea48-68471861'
-        entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(entries) == 0
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, vessel_meta)
-        entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(entries) == 1
-        all_entries = get_metadata_entries(cur)
+        all_entries = get_metadata_entries(db)
         assert len(all_entries) == 4
 
         test_entry = all_entries[3]
-        entry_stats: VesselEntrySummaryStats = get_vessel_entry_stats(cur, test_entry.key.unique_vessel_id, test_entry.hash)
+        entry_stats: VesselEntrySummaryStats = get_vessel_entry_stats(db, test_entry.key.unique_vessel_id, test_entry.hash)
         # There's only one entry with this unique ID right now, so the stats are just the values of that entry...
         # assert stats.min_start_time == test_entry.key.start_time
         # assert stats.max_start_time == test_entry.key.start_time
@@ -49,7 +49,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         doc_path_ex1_newer: Path = data_path / 'example1-newer-start-time'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_newer, stats))
-        new_entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        new_entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(new_entries) == 2
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time
@@ -60,7 +60,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         doc_path_ex1_older: Path = data_path / 'example1-older-start-time'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_older, stats))
-        new_entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        new_entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.start_time < existing_entry.key.start_time
@@ -68,13 +68,13 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
 
         # Now ingest a file with the same, though rounded, metadata and a newer start time.
         # This should result in no change to the database.
-        entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(entries) == 1
         existing_entry = entries[0]
         doc_path_ex1_rounded: Path = data_path / 'example1-rounded-same-hash'
         stats = DataIngestStats()
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex1_rounded, stats))
-        new_entries = get_metadata_entries(cur, unique_vessel_id=unique_vessel_id)
+        new_entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(new_entries) == 1
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time

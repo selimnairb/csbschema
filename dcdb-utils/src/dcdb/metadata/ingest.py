@@ -108,6 +108,7 @@ class DataIngestStats:
     records_total: int = 0
     records_written: int = 0
     records_updated: int = 0
+    records_deleted: int = 0
     records_warning: int = 0
     records_error: int = 0
 
@@ -155,9 +156,9 @@ def hash_metadata(md: dict, *,
     return m.hexdigest()
 
 
-def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
+def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
                                 skip_errors: bool = False):
-    db_cur: sqlite3.Cursor = conn.cursor()
+    db_cur: sqlite3.Cursor = con.cursor()
     deltas: dict = {}
     try:
         for k, v in vessel_meta:
@@ -172,10 +173,10 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
             #       but with an earlier start_time or later end_time (or both): UPDATE existing entry
             #  - Else, INSERT
             # TODO: Change this to get just the number of entries
-            entries = db.get_metadata_entries(db_cur, unique_vessel_id=k.unique_vessel_id,
+            entries = db.get_metadata_entries(con, unique_vessel_id=k.unique_vessel_id,
                                               md_hash=md_hash)
             if len(entries) > 0:
-                entry_stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(db_cur, k.unique_vessel_id, md_hash)
+                entry_stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(con, k.unique_vessel_id, md_hash)
                 if k.start_time < entry_stats.min_start_time.value:
                     old_key: VesselMetadataKey = entry_stats.min_start_time.key
                     new_key = VesselMetadataKey(
@@ -194,17 +195,27 @@ def write_vessel_metadata_to_db(conn: sqlite3.Connection, stats: DataIngestStats
                     deltas[old_key] = deltas.get(old_key, None) + new_key
             else:
                 # No vessel entry exists for this (unique_vessel_id, hash) INSERT
-                db.add_entry_for_vessel(db_cur, k.unique_vessel_id,
+                db.add_entry_for_vessel(con, k.unique_vessel_id,
                                         k.start_time, k.end_time, md_hash, metadata)
                 stats.records_written += 1
-        # TODO: Apply coalesced deltas
-        try:
-            # TODO: Update
-            stats.records_updated += 1
-        except sqlite3.IntegrityError as e:
-            # Got an integrity error while updating, which means the update we want to make
-            # already exists in the DB, so we can ignore...
-            print(f"WARNING: caught sqlite3.IntegrityError while updating, error was: {str(e)}")
+        # Apply coalesced deltas
+        updates_applied = set()
+        for old_key, new_key in deltas.items():
+            try:
+                if new_key not in updates_applied:
+                    # `new_key` update hasn't been applied yet; do so.
+                    db.update_vessel_entry_start_time_end_time(con, old_key, new_key)
+                    updates_applied.add(new_key)
+                    stats.records_updated += 1
+                else:
+                    # `new_key` update has already been applied to the DB,
+                    # so we should delete the entry (`old_key`) we would have updated
+                    db.delete_vessel_entry(con, old_key)
+                    stats.records_deleted += 1
+            except sqlite3.IntegrityError as e:
+                # Got an integrity error while updating, which should not happen
+                print(f"ERROR: caught sqlite3.IntegrityError while updating {str(old_key)}, deleting. Error was: {str(e)}")
+                raise e
 
     except sqlite3.IntegrityError as e:
         print(f"Encountered error: {e}, giving up...")

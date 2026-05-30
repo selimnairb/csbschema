@@ -43,22 +43,33 @@ def open_metadata_db(db_file: Path) -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     return con
 
-def add_entry_for_vessel(cur: sqlite3.Cursor,
+def add_entry_for_vessel(con: sqlite3.Connection,
                          unique_vessel_id: str,
                          start_time: int,
                          end_time: int,
                          hash: str,
                          metadata: str):
-    cur.execute('INSERT INTO vessels VALUES(?, ?, ?, ?, ?)',
+    con.execute('''INSERT INTO vessels VALUES(?, ?, ?, ?, ?);''',
                 (unique_vessel_id, start_time, end_time, hash, metadata))
 
-# def update_start_time_for_vessel(cur: sqlite3.Cursor,
-#                                start_time: int,
-#                                unique_vessel_id: str,
-#                                hash: str):
-#     cur.execute('UPDATE vessels SET start_time=? WHERE unique_vessel_id=? AND hash=?',
-#                 (start_time, unique_vessel_id, hash))
-#
+
+def update_vessel_entry_start_time_end_time(con: sqlite3.Connection,
+                                            key: VesselMetadataKey,
+                                            new_key: VesselMetadataKey):
+    con.execute('''
+                UPDATE vessels SET start_time=?, end_time=?
+                WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
+                ''',
+                (new_key.start_time, new_key.end_time,
+                           key.unique_vessel_id, key.start_time, key.end_time))
+
+
+def delete_vessel_entry(con: sqlite3.Connection, key: VesselMetadataKey):
+    con.execute('''
+                DELETE FROM vessels
+                WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
+                ''',
+                (key.unique_vessel_id, key.start_time, key.end_time))
 
 
 def update_vessel_entry(cur: sqlite3.Cursor,
@@ -88,9 +99,10 @@ class VesselEntrySummaryStats:
     max_end_time: VesselEntryStat | None = None
 
 
-def get_vessel_entry_stats(cur: sqlite3.Cursor, unique_vessel_id: str, md_hash: str) -> VesselEntrySummaryStats:
+def get_vessel_entry_stats(con: sqlite3.Connection, unique_vessel_id: str, md_hash: str) -> VesselEntrySummaryStats:
     ret = VesselEntrySummaryStats()
 
+    cur = con.cursor()
     # Get min start_time and PK of row that has it
     results = cur.execute('''
                 SELECT min(start_time), unique_vessel_id, start_time, end_time
@@ -155,7 +167,7 @@ def get_vessel_entry_stats(cur: sqlite3.Cursor, unique_vessel_id: str, md_hash: 
     return ret
 
 
-def get_metadata_entries(cur: sqlite3.Cursor, *,
+def get_metadata_entries(con: sqlite3.Connection, *,
                          unique_vessel_id: str | None = None,
                          pred_unique_vessel_id: Predicate = Predicate.EQ,
                          start_time: int | None = None,
@@ -181,7 +193,7 @@ def get_metadata_entries(cur: sqlite3.Cursor, *,
         builder.write(f" AND hash{str(pred_md_hash)}?")
         args.append(md_hash)
     try:
-        results = cur.execute(builder.getvalue(), args)
+        results = con.execute(builder.getvalue(), args)
         for r in results.fetchall():
             key = VesselMetadataKey(r['unique_vessel_id'],
                                     r['start_time'],
