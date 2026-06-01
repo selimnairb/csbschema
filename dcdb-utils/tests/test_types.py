@@ -50,6 +50,41 @@ def test_vessel_metadata_key_identity():
         1769113847000
     )
     k2 = None + k
+    k3 = k + None
+    assert id(k) == id(k2) == id(k3)
     assert k.unique_vessel_id == k2.unique_vessel_id
     assert k.start_time == k2.start_time
     assert k.end_time == k2.end_time
+
+
+def test_vessel_metadata_key_intersect():
+    k1: VesselMetadataKey = VesselMetadataKey(
+        "one",
+        10,
+        20
+    )
+    k2: VesselMetadataKey = VesselMetadataKey(
+        "one",
+        5,
+        10
+    )
+    k3: VesselMetadataKey = VesselMetadataKey(
+        "one",
+        15,
+        20
+    )
+    k4: VesselMetadataKey = VesselMetadataKey(
+        "one",
+        5,
+        11
+    )
+    k5: VesselMetadataKey = VesselMetadataKey(
+        "one",
+        15,
+        21
+    )
+    assert k1.intersects(k2)
+    assert k1.intersects(k3)
+    assert not k2.intersects(k3)
+    assert k1.intersects(k4)
+    assert k1.intersects(k5)

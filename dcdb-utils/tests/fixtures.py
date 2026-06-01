@@ -5,7 +5,7 @@ import shutil
 import pytest
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def temp_path() -> Path:
     tmp_dir = Path(tempfile.mkdtemp())
     yield tmp_dir

@@ -9,6 +9,8 @@ import sys
 
 import json_stream.base
 
+from intervaltree import IntervalTree
+
 from ..metadata import VesselMetadataKey
 from .extraction import get_unique_vessel_id, get_start_end_times, sort_dict_by_keys
 from . import db
@@ -34,7 +36,8 @@ def round_numeric(meta: dict|list, *,
 def iterate_json_objects(doc_root: Path, *,
                          verbose: bool = False) -> Iterator[tuple[str, dict]]:
     if doc_root.is_dir():
-        for doc in doc_root.glob('*.json'):
+        docs = sorted([doc for doc in doc_root.glob('*.json')])
+        for doc in docs:
             if verbose:
                 sys.stdout.write(f"Attempting to read file {str(doc)}...")
             with doc.open(mode='rt') as f:
@@ -107,6 +110,7 @@ def load_vessel_metadata(doc_root: Path,
 class DataIngestStats:
     records_total: int = 0
     records_written: int = 0
+    records_intersected: int = 0
     records_updated: int = 0
     records_deleted: int = 0
     records_warning: int = 0
@@ -158,7 +162,6 @@ def hash_metadata(md: dict, *,
 
 def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
                                 skip_errors: bool = False):
-    db_cur: sqlite3.Cursor = con.cursor()
     deltas: dict = {}
     try:
         for k, v in vessel_meta:
@@ -167,56 +170,37 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
             metadata: str = json.dumps(v)
             # Create-update logic is as follows:
             #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, hash): SKIP
-            #  - If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
-            #       but with a later start time or earlier end_time: SKIP
-            #  - Else, If a vessel entry exists for the same (unique_vessel_id, start_time, hash)
-            #       but with an earlier start_time or later end_time (or both): UPDATE existing entry
+            #  - Else, If a vessel entry intersects in time with a given (unique_vessel_id, start_time, end_time,
+            #    and hash): UPDATE existing entry to be the intersection
+            #    - If UPDATE has already been applied for another existing entry, delete the entry being updated.
             #  - Else, INSERT
-            # TODO: Change this to get just the number of entries
+            intersected: bool = False
+            exists: bool = False
             entries = db.get_metadata_entries(con, unique_vessel_id=k.unique_vessel_id,
                                               md_hash=md_hash)
-            if len(entries) > 0:
-                entry_stats: db.VesselEntrySummaryStats = db.get_vessel_entry_stats(con, k.unique_vessel_id, md_hash)
-                if k.start_time < entry_stats.min_start_time.value:
-                    old_key: VesselMetadataKey = entry_stats.min_start_time.key
-                    new_key = VesselMetadataKey(
-                        old_key.unique_vessel_id,
-                        k.start_time,
-                        old_key.end_time
-                    )
-                    deltas[old_key] = deltas.get(old_key, None) + new_key
-                if k.end_time > entry_stats.max_end_time.value:
-                    old_key: VesselMetadataKey = entry_stats.max_end_time.key
-                    new_key = VesselMetadataKey(
-                        old_key.unique_vessel_id,
-                        old_key.start_time,
-                        k.end_time
-                    )
-                    deltas[old_key] = deltas.get(old_key, None) + new_key
-            else:
-                # No vessel entry exists for this (unique_vessel_id, hash) INSERT
+            for entry in entries:
+                if k.intersects(entry.key):
+                    if k == entry.key:
+                        exists = True
+                    else:
+                        intersected = True
+                        deltas[entry.key] = deltas.get(entry.key, None) + (k + entry.key)
+                        stats.records_intersected += 1
+            if not intersected and not exists:
                 db.add_entry_for_vessel(con, k.unique_vessel_id,
                                         k.start_time, k.end_time, md_hash, metadata)
                 stats.records_written += 1
-        # Apply coalesced deltas
-        updates_applied = set()
+
+        # Apply any updates
         for old_key, new_key in deltas.items():
             try:
-                if new_key not in updates_applied:
-                    # `new_key` update hasn't been applied yet; do so.
-                    db.update_vessel_entry_start_time_end_time(con, old_key, new_key)
-                    updates_applied.add(new_key)
-                    stats.records_updated += 1
-                else:
-                    # `new_key` update has already been applied to the DB,
-                    # so we should delete the entry (`old_key`) we would have updated
-                    db.delete_vessel_entry(con, old_key)
-                    stats.records_deleted += 1
+                db.update_vessel_entry_start_time_end_time(con, old_key, new_key)
+                stats.records_updated += 1
             except sqlite3.IntegrityError as e:
-                # Got an integrity error while updating, which should not happen
-                print(f"ERROR: caught sqlite3.IntegrityError while updating {str(old_key)}, deleting. Error was: {str(e)}")
-                raise e
+                print(f"Deleting {str(old_key)} as {str(new_key)} has already been applied.")
+                db.delete_vessel_entry(con, old_key)
+                stats.records_deleted += 1
 
     except sqlite3.IntegrityError as e:
-        print(f"Encountered error: {e}, giving up...")
+        print(f"Encountered error: {str(e)}, giving up...")
         raise e
