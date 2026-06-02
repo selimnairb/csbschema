@@ -6,6 +6,7 @@ from pathlib import Path
 import hashlib
 from typing import Iterator, Sequence
 import sys
+from functools import reduce
 
 import json_stream.base
 
@@ -149,6 +150,7 @@ def remove_key(d: dict, key_compound: str):
     except KeyError:
         ...
 
+
 def hash_metadata(md: dict, *,
                   exclude_keys: Sequence[str] = ('providerContactPoint.loggerVersion',)) -> str:
     m = hashlib.sha3_256()
@@ -158,6 +160,39 @@ def hash_metadata(md: dict, *,
     metadata: str = json.dumps(md_cpy)
     m.update(bytes(metadata, 'utf-8'))
     return m.hexdigest()
+
+
+def _reduce_deltas(deltas: dict[VesselMetadataKey, VesselMetadataKey],
+                   # deltas_inv: dict[VesselMetadataKey, VesselMetadataKey],
+                   to_delete: set[VesselMetadataKey]) -> \
+        dict[VesselMetadataKey, VesselMetadataKey]:
+    num_deltas = len(deltas)
+    if num_deltas >= 2:
+        num_deltas_ = num_deltas - 1
+        keys = [k for k in deltas.keys()]
+        values = [v for v in deltas.values()]
+        new_deltas: dict[VesselMetadataKey, VesselMetadataKey] = {}
+        i = 0
+        has_isect = False
+        while i < num_deltas_:
+            v1 = values[i]
+            v2 = values[i + 1]
+            if v1.intersects(v2):
+                has_isect = True
+                new_deltas[keys[i]] = v1 + v2
+                to_delete.add(keys[i+1])
+                i += 2
+            else:
+                new_deltas[keys[i]] = v1
+                i += 1
+        while i < num_deltas:
+            new_deltas[keys[i]] = values[i]
+        if has_isect:
+            return _reduce_deltas(new_deltas, to_delete)
+        else:
+            return new_deltas
+    else:
+        return deltas
 
 
 def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats, vessel_meta: Iterator[tuple[VesselMetadataKey, dict]], *,
@@ -184,12 +219,17 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
                         exists = True
                     else:
                         intersected = True
-                        deltas[entry.key] = deltas.get(entry.key, None) + (k + entry.key)
+                        delta = (k + entry.key)
+                        deltas[entry.key] = deltas.get(entry.key, None) + delta
                         stats.records_intersected += 1
             if not intersected and not exists:
                 db.add_entry_for_vessel(con, k.unique_vessel_id,
                                         k.start_time, k.end_time, md_hash, metadata)
                 stats.records_written += 1
+
+        # Before applying updates, see if any values intersect
+        to_delete: set[VesselMetadataKey] = set()
+        deltas = _reduce_deltas(deltas, to_delete)
 
         # Apply any updates
         for old_key, new_key in deltas.items():
@@ -200,6 +240,10 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
                 print(f"Deleting {str(old_key)} as {str(new_key)} has already been applied.")
                 db.delete_vessel_entry(con, old_key)
                 stats.records_deleted += 1
+        # Process any deletes
+        for d in to_delete:
+            db.delete_vessel_entry(con, d)
+            stats.records_deleted += 1
 
     except sqlite3.IntegrityError as e:
         print(f"Encountered error: {str(e)}, giving up...")

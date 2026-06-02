@@ -4,12 +4,15 @@ from typing import Iterator
 import pytest
 
 from dcdb.metadata import VesselMetadataKey
-from dcdb.metadata.ingest import load_vessel_metadata, write_vessel_metadata_to_db, DataIngestStats, hash_metadata
+from dcdb.metadata.ingest import (
+    load_vessel_metadata,
+    write_vessel_metadata_to_db,
+    DataIngestStats
+)
 from dcdb.metadata.db import (
     create_metadata_db,
     open_metadata_db,
-    get_metadata_entries,
-    add_entry_for_vessel,
+    get_metadata_entries
 )
 
 from fixtures import data_path, temp_path
@@ -109,6 +112,10 @@ def test_write_vessel_metadata_to_db_sequential(data_path, temp_path):
         write_vessel_metadata_to_db(db, stats, load_vessel_metadata(doc_path_ex2, stats))
         entries = get_metadata_entries(db, unique_vessel_id=unique_vessel_id)
         assert len(entries) == 2
+        assert entries[0].key.start_time == 31
+        assert entries[0].key.end_time == 47
+        assert entries[1].key.start_time == 57
+        assert entries[1].key.end_time == 67
     finally:
         db.close()
 
