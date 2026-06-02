@@ -50,8 +50,15 @@ def iterate_json_objects(doc_root: Path, *,
                 yield doc, json_stream.to_standard_types(data)
             elif isinstance(data, json_stream.base.TransientStreamingJSONList):
                 # The file contains a JSON array at its root, iterate elements to yield them as dicts
+                elem: int = 0
                 for i, d in enumerate(data):
-                    yield f"{doc}[{i}]", json_stream.to_standard_types(d)
+                    elem += 1
+                    try:
+                        yield f"{doc}[{i}]", json_stream.to_standard_types(d)
+                    except ValueError as e:
+                        print(f"ERROR: Reading element {elem} from file {doc}, Attempting to read next element. "
+                              f"error was: {str(e)}")
+                        continue
             else:
                 raise ValueError(f"Expected either a JSON object or list at the root of {doc}, but found {type(data)}.")
     else:
