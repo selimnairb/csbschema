@@ -63,6 +63,7 @@ def load_vessel_metadata(doc_root: Path,
                          *,
                          verbose: bool = False) -> Iterator[tuple[VesselMetadataKey, dict]]:
     for doc, doc_data in iterate_json_objects(doc_root, verbose=verbose):
+        stats.records_total += 1
         try:
             uniqueId = get_unique_vessel_id(doc_data)
         except ValueError as e:
@@ -161,7 +162,6 @@ def hash_metadata(md: dict, *,
 
 
 def _merge_deltas(deltas: dict[VesselMetadataKey, VesselMetadataKey],
-                  # deltas_inv: dict[VesselMetadataKey, VesselMetadataKey],
                   to_delete: set[VesselMetadataKey]) -> \
         dict[VesselMetadataKey, VesselMetadataKey]:
     num_deltas = len(deltas)
@@ -199,7 +199,6 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
     deltas: dict = {}
     try:
         for k, v in vessel_meta:
-            stats.records_total += 1
             md_hash = hash_metadata(v)
             metadata: str = json.dumps(v)
             # Create-update logic is as follows:

@@ -20,8 +20,8 @@ time python3 -m dcdb.metadata \
 ...
 ...
 ...
-python3 -m dcdb.metadata ../local/csbMetadataPayload_20170101-20260325.json    42.88s user 0.45s system 97% cpu 44.443 total
-tee ../local/csbMetadataPayload_20170101-20260325.log  0.01s user 0.46s system 1% cpu 44.442 total
+python3 -m dcdb.metadata ../local/csbMetadataPayload_20170101-20260325.json    440.20s user 239.07s system 89% cpu 12:36.84 total
+tee ../local/csbMetadataPayload_20170101-20260325.log  0.01s user 0.49s system 0% cpu 12:36.84 total
 ```
 
 The other options are described using the `--help` option:
@@ -41,6 +41,84 @@ options:
   --verbose      Produce verbose output for diagnostics
   --skip-errors  If set, treat errors as a warning and continue processing
 ```
+
+### Incremental indexing
+```shell
+# First chunk
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt1.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-incremental.sqlite3 \
+  --verbose --overwrite --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt1.log
+# Second chunk  
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt2.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-incremental.sqlite3 \
+  --verbose --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt2.log
+# Third chunk
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt3.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-incremental.sqlite3 \
+  --verbose --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-pt3.log
+```
+
+Sequential run to compare to:
+```shell
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-singleton.sqlite3 \
+  --verbose --overwrite --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-singleton.log
+```
+
+Dump to CSV and compare:
+```shell
+sqlite3 -csv ../local/csbMetadataPayload_20170101-20260325-subset-incremental.sqlite3 'SELECT unique_vessel_id, hash, start_time, end_time FROM vessels ORDER BY unique_vessel_id, hash, start_time, end_time;' > ../local/csbMetadataPayload_20170101-20260325-subset-incremental.csv
+
+sqlite3 -csv ../local/csbMetadataPayload_20170101-20260325-subset-singleton.sqlite3 'SELECT unique_vessel_id, hash, start_time, end_time FROM vessels ORDER BY unique_vessel_id, hash, start_time, end_time;' > ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv 
+
+diff -s ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv \
+  ../local/csbMetadataPayload_20170101-20260325-subset-incremental.csv
+Files ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv and ../local/csbMetadataPayload_20170101-20260325-subset-incremental.csv are identical
+```
+
+No differences!  Processing all records from one file results in functionally the same database as when processing
+incremental.
+
+### Incremental indexing with overlap between files
+```shell
+# First chunk
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt1.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.sqlite3 \
+  --verbose --overwrite --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt1.log
+# Second chunk  
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt2.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.sqlite3 \
+  --verbose --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt2.log
+# Third chunk
+time python3 -m dcdb.metadata \
+  ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt3.json \
+  ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.sqlite3 \
+  --verbose --skip-errors | tee ../local/csbMetadataPayload_20170101-20260325-pretty-subset-overlap-pt3.log
+```
+
+Dump to CSV and compare:
+```shell
+sqlite3 -csv ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.sqlite3 'SELECT unique_vessel_id, hash, start_time, end_time FROM vessels ORDER BY unique_vessel_id, hash, start_time, end_time;' > ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.csv
+
+diff -s ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv \
+  ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.csv
+
+68,69c68
+< PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662396000,1647673188000
+< PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662401000,1647673193000
+---
+> PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662396000,1647673193000
+```
+
+Here we see a minor difference. The sequentially processing the files with overlaps yields a slightly
+better result for this one record, where two overlapping sequences are combined into one sequence in the 
+database created from input files with overlapping data.
 
 ## Using the database
 To use the CSB index metadata database created above, you can use your language's bindings for SQLite3. Additionally, 

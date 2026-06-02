@@ -5,6 +5,7 @@ import sqlite3
 from .ingest import load_vessel_metadata, write_vessel_metadata_to_db, DataIngestStats
 from .db import create_metadata_db, open_metadata_db
 
+
 def index_dcdb_metadata(source: Path, db_path: Path, *,
                         overwrite: bool = False, verbose: bool = False, skip_errors: bool = False) -> DataIngestStats:
     print(f"Using source: {str(source)}, is_dir: {source.is_dir()}, is_file: {source.is_file()}")
