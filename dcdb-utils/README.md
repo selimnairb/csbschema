@@ -80,8 +80,8 @@ diff -s ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv \
 Files ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv and ../local/csbMetadataPayload_20170101-20260325-subset-incremental.csv are identical
 ```
 
-No differences!  Processing all records from one file results in functionally the same database as when processing
-incremental.
+No differences!  Processing all records from one file results in functionally the same 
+database as when processing incrementally.
 
 ### Incremental indexing with overlap between files
 ```shell
@@ -109,16 +109,11 @@ sqlite3 -csv ../local/csbMetadataPayload_20170101-20260325-subset-overlap-increm
 diff -s ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv \
   ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.csv
 
-68,69c68
-< PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662396000,1647673188000
-< PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662401000,1647673193000
----
-> PGS-3b0c5ff2-0998-11eb-8eb6-98be942a5b5a,633b35132cc91d289187d0dc26fbf1cfd2269564c6d75c2095a2cd8527b2a8ed,1647662396000,1647673193000
+Files ../local/csbMetadataPayload_20170101-20260325-subset-singleton.csv and ../local/csbMetadataPayload_20170101-20260325-subset-overlap-incremental.csv are identical
 ```
 
-Here we see a minor difference. The sequentially processing the files with overlaps yields a slightly
-better result for this one record, where two overlapping sequences are combined into one sequence in the 
-database created from input files with overlapping data.
+No differences!  Processing all records from one file results in functionally the same 
+database as when processing overlapped data incrementally.
 
 ## Using the database
 To use the CSB index metadata database created above, you can use your language's bindings for SQLite3. Additionally, 
