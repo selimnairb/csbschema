@@ -27,8 +27,7 @@ def create_metadata_db(db_file: Path):
             CREATE TABLE 
                 vessels(unique_vessel_id TEXT, start_time INTEGER, end_time INTEGER,
                         hash TEXT, metadata JSON,
-                        PRIMARY KEY (unique_vessel_id, start_time, end_time),
-                        CONSTRAINT vessels_md_uniq UNIQUE (unique_vessel_id, start_time, end_time, hash));
+                        PRIMARY KEY (unique_vessel_id, start_time, end_time, hash));
             CREATE INDEX IF NOT EXISTS vessels_uv_id_idx ON vessels (unique_vessel_id);
             CREATE INDEX IF NOT EXISTS vessels_strt_tm_idx ON vessels (start_time);
             CREATE INDEX IF NOT EXISTS vessels_end_tm_idx ON vessels (end_time);
@@ -60,18 +59,18 @@ def update_vessel_entry_start_time_end_time(con: sqlite3.Connection,
                                             new_key: VesselMetadataKey):
     con.execute('''
                 UPDATE vessels SET start_time=?, end_time=?
-                WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
+                WHERE unique_vessel_id=? AND start_time=? AND end_time=? AND hash=?;
                 ''',
                 (new_key.start_time, new_key.end_time,
-                           key.unique_vessel_id, key.start_time, key.end_time))
+                    key.unique_vessel_id, key.start_time, key.end_time, key.md_hash))
 
 
 def delete_vessel_entry(con: sqlite3.Connection, key: VesselMetadataKey):
     con.execute('''
                 DELETE FROM vessels
-                WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
+                WHERE unique_vessel_id=? AND start_time=? AND end_time=? AND hash=?;
                 ''',
-                (key.unique_vessel_id, key.start_time, key.end_time))
+                (key.unique_vessel_id, key.start_time, key.end_time, key.md_hash))
 
 
 def update_vessel_entry(cur: sqlite3.Cursor,
@@ -82,10 +81,10 @@ def update_vessel_entry(cur: sqlite3.Cursor,
                                    end_time=?,
                                    hash=?,
                                    metadata=?
-                WHERE unique_vessel_id=? AND start_time=? AND end_time=?;
+                WHERE unique_vessel_id=? AND start_time=? AND end_time=? AND hash=?;
                 ''',
-                (new_val.key.start_time, new_val.key.end_time, new_val.hash, json.dumps(new_val.metadata),
-                           key.unique_vessel_id, key.start_time, key.end_time))
+                (new_val.key.start_time, new_val.key.end_time, new_val.key.md_hash,
+                 json.dumps(new_val.metadata), key.unique_vessel_id, key.start_time, key.end_time, key.md_hash))
 
 
 @dataclass
@@ -107,7 +106,7 @@ def get_vessel_entry_stats(con: sqlite3.Connection, unique_vessel_id: str, md_ha
     cur = con.cursor()
     # Get min start_time and PK of row that has it
     results = cur.execute('''
-                SELECT min(start_time), unique_vessel_id, start_time, end_time
+                SELECT min(start_time), unique_vessel_id, start_time, end_time, hash
                 FROM vessels
                 WHERE unique_vessel_id = ?
                   AND hash = ?;
@@ -120,7 +119,7 @@ def get_vessel_entry_stats(con: sqlite3.Connection, unique_vessel_id: str, md_ha
     )
     # Get max start_time and PK of row that has it
     results = cur.execute('''
-                          SELECT max(start_time), unique_vessel_id, start_time, end_time
+                          SELECT max(start_time), unique_vessel_id, start_time, end_time, hash
                           FROM vessels
                           WHERE unique_vessel_id = ?
                             AND hash = ?;
@@ -133,7 +132,7 @@ def get_vessel_entry_stats(con: sqlite3.Connection, unique_vessel_id: str, md_ha
     )
     # Get min end_time and PK of row that has it
     results = cur.execute('''
-                          SELECT min(end_time), unique_vessel_id, start_time, end_time
+                          SELECT min(end_time), unique_vessel_id, start_time, end_time, hash
                           FROM vessels
                           WHERE unique_vessel_id = ?
                             AND hash = ?;
@@ -146,7 +145,7 @@ def get_vessel_entry_stats(con: sqlite3.Connection, unique_vessel_id: str, md_ha
     )
     # Get max end_time and PK of row that has it
     results = cur.execute('''
-                          SELECT max(end_time), unique_vessel_id, start_time, end_time
+                          SELECT max(end_time), unique_vessel_id, start_time, end_time, hash
                           FROM vessels
                           WHERE unique_vessel_id = ?
                             AND hash = ?;
@@ -191,10 +190,9 @@ def get_metadata_entries(con: sqlite3.Connection, *,
         for r in results.fetchall():
             key = VesselMetadataKey(r[0],
                                     r[1],
-                                    r[2])
-            value = VesselMetadata(key,
-                                   r[3],
-                                   json.loads(r[4]))
+                                    r[2],
+                                    r[3])
+            value = VesselMetadata(key, json.loads(r[4]))
             entries.append(value)
     except Exception as e:
         raise e
@@ -211,15 +209,11 @@ def get_metadata_entry_keys_intersecting(con: sqlite3.Connection,
                                          end_time: int) -> Generator[VesselMetadataKey, Any, None]:
     try:
         results = con.execute('''
-        SELECT unique_vessel_id, start_time, end_time FROM vessels
+        SELECT unique_vessel_id, start_time, end_time, hash FROM vessels
         WHERE unique_vessel_id=? AND hash=? AND (
             (start_time <= ? AND end_time >= ?) OR
                 (start_time <= ? AND end_time >= ?)
-            )''',
-                              (unique_vessel_id, md_hash,
-                               start_time, start_time,
-                               end_time, end_time)
-                              )
+            )''',(unique_vessel_id, md_hash, start_time, start_time, end_time, end_time))
         for r in results:
             yield VesselMetadataKey(*r)
     except Exception as e:

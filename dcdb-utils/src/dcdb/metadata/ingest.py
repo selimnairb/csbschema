@@ -107,6 +107,7 @@ def load_vessel_metadata(doc_root: Path,
             unique_vessel_id=uniqueId,
             start_time=start_time,
             end_time=end_time,
+            md_hash=hash_metadata(doc_meta)
         )
         if verbose:
             sys.stdout.write('done.\n')
@@ -185,7 +186,7 @@ def _merge_deltas(deltas: dict[VesselMetadataKey, VesselMetadataKey],
             if v1.intersects(v2):
                 has_isect = True
                 new_deltas[keys[i]] = v1 + v2
-                to_delete.add(keys[i+1])
+                to_delete.add(keys[i + 1])
                 i += 2
             else:
                 new_deltas[keys[i]] = v1
@@ -206,19 +207,18 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
     deltas: dict = {}
     try:
         for k, v in vessel_meta:
-            md_hash = hash_metadata(v)
             metadata: str = json.dumps(v)
             # Create-update logic is as follows:
             #  - If a vessel entry exists for this (unique_vessel_id, start_time, end_time, hash): SKIP
             #  - Else, If a vessel entry intersects in time with a given (unique_vessel_id, start_time, end_time,
-            #    and hash): UPDATE existing entry to be the intersection
+            #    and hash): UPDATE existing entry to be the union
             #    - If UPDATE has already been applied for another existing entry, delete the entry being updated.
             #  - Else, INSERT
             intersected: bool = False
             exists: bool = False
             for entry in db.get_metadata_entry_keys_intersecting(con,
                                                                  k.unique_vessel_id,
-                                                                 md_hash,
+                                                                 k.md_hash,
                                                                  k.start_time,
                                                                  k.end_time):
                 if k == entry:
@@ -226,15 +226,31 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
                 else:
                     intersected = True
                     delta = (k + entry)
-                    deltas[entry] = deltas.get(entry, None) + delta
+                    # Need to check whether `deltas.get(entry, None)` intersects with `delta` before adding.
+                    existing_delta = deltas.get(entry, None)
+                    if existing_delta is None:
+                        deltas[entry] = delta
+                    else:
+                        if delta.intersects(existing_delta):
+                            deltas[entry] = existing_delta + delta
+                        else:
+                            # The delta does not intersect with the existing delta
+                            # Do we: A. Insert k, or insert the delta?
+                            # Is this even possible to reach??
+                            raise NotImplementedError(f"Delta {str(delta)} for new entry {str(k)} intersects "
+                                                      f"with {str(entry)} but does not intersect with existing "
+                                                      f"delta {str(existing_delta)}.")
+
                     stats.records_intersected += 1
             if not intersected and not exists:
                 try:
                     db.add_entry_for_vessel(con, k.unique_vessel_id,
-                                            k.start_time, k.end_time, md_hash, metadata)
+                                            k.start_time, k.end_time, k.md_hash, metadata)
                     stats.records_written += 1
                 except sqlite3.IntegrityError as e:
                     print(f"WARNING: Metadata entry with key {str(k)} already exists in database.")
+
+
 
         # Before applying updates, see if any updates intersect in time, and if so, merge them, marking for deletion
         # any existing records whose delta was merged with another.

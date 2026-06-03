@@ -52,7 +52,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         new_entry_st = new_entries[0]
         assert new_entry_st.key.start_time < initial_entry.key.start_time
         assert new_entry_st.key.end_time == initial_entry.key.end_time
-        assert new_entry_st.hash == initial_entry.hash
+        assert new_entry_st.key.md_hash == initial_entry.key.md_hash
 
         # Now ingest a file with the same metadata as an existing entry, but with a later end time.
         # This should result in the record being updated to have the older start time.
@@ -65,7 +65,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         # Start time was updated with the previous import, so we can't compare to the baseline.
         assert new_entry_ed.key.start_time == new_entry_st.key.start_time
         assert new_entry_ed.key.end_time > initial_entry.key.end_time
-        assert new_entry_ed.hash == initial_entry.hash
+        assert new_entry_ed.key.md_hash == initial_entry.key.md_hash
 
         # Now ingest a file with the same, though rounded, metadata and a newer start time.
         # This should result in no change to the database (because all metadata are rounded
@@ -81,7 +81,7 @@ def test_write_vessel_metadata_to_db(data_path, temp_path):
         new_entry = new_entries[0]
         assert new_entry.key.start_time == existing_entry.key.start_time
         assert new_entry.key.end_time == existing_entry.key.end_time
-        assert new_entry.hash == existing_entry.hash
+        assert new_entry.key.md_hash == existing_entry.key.md_hash
 
         # Finally, test the case where a new metadata entry for an existing vessel is received
         # that has different metadata, but the same start time and end time.
