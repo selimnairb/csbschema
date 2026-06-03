@@ -226,6 +226,10 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
                 else:
                     intersected = True
                     delta = (k + entry)
+                    if delta == entry:
+                        # Handle case where delta turns out to be the same as entry (i.e., k is strict subset of entry)
+                        # in which case we don't need to do anything...
+                        continue
                     # Need to check whether `deltas.get(entry, None)` intersects with `delta` before adding.
                     existing_delta = deltas.get(entry, None)
                     if existing_delta is None:
