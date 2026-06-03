@@ -100,7 +100,7 @@ def load_vessel_metadata(doc_root: Path,
             continue
         # Sort metadata so that hashing is consistent for the same set of metadata
         doc_meta: dict = sort_dict_by_keys(doc_data, {})
-        # Round numeric values in metadata to normalize essentially similar metadata
+        # Round numeric values in metadata to normalize essentially identical metadata
         round_numeric(doc_meta)
         # print(f"sorted doc_meta: {json.dumps(doc_meta)}\n\n")
         key = VesselMetadataKey(
@@ -250,24 +250,50 @@ def write_vessel_metadata_to_db(con: sqlite3.Connection, stats: DataIngestStats,
                 except sqlite3.IntegrityError as e:
                     print(f"WARNING: Metadata entry with key {str(k)} already exists in database.")
 
+        # Before merging deltas, let's compare each delta to DB entries with the same unique_vessel_id and hash,
+        # now that we've seen all entries in the current file. This way, we can merge deltas with any entries
+        # that weren't known about when the delta was created.
+        to_delete_db: set[VesselMetadataKey] = set()
+        to_delete_delta: set[VesselMetadataKey] = set()
+        for old_key, delta in deltas.items():
+            for entry in db.get_metadata_entry_keys_intersecting(con,
+                                                                 delta.unique_vessel_id,
+                                                                 delta.md_hash,
+                                                                 delta.start_time,
+                                                                 delta.end_time):
+                if delta == entry:
+                    # The delta already exists in the DB due to an entry being added after the delta was created,
+                    # so we can simply mark this delta for deletion and mark old_key for deletion since it is no
+                    # longer needed.
+                    to_delete_db.add(old_key)
+                    # Can't delete the delta here as it can raise a RunTime error, see
+                    # [here](https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects)
+                    to_delete_delta.add(old_key)
+                    # No sense looking at any further DB entries since we just deleted this delta
+                    break
+                # delta intersects with entry, update delta to be the union of delta and entry, and mark entry
+                # for deletion as it will be obsoleted by delta.
+                deltas[old_key] += entry
+                to_delete_db.add(entry)
+                stats.records_intersected += 1
 
-
+        for d in to_delete_delta:
+            del deltas[d]
         # Before applying updates, see if any updates intersect in time, and if so, merge them, marking for deletion
         # any existing records whose delta was merged with another.
-        to_delete: set[VesselMetadataKey] = set()
-        deltas = _merge_deltas(deltas, to_delete)
+        deltas = _merge_deltas(deltas, to_delete_db)
 
         # Apply any updates
-        for old_key, new_key in deltas.items():
+        for old_key, delta in deltas.items():
             try:
-                db.update_vessel_entry_start_time_end_time(con, old_key, new_key)
+                db.update_vessel_entry_start_time_end_time(con, old_key, delta)
                 stats.records_updated += 1
             except sqlite3.IntegrityError as e:
-                print(f"Deleting {str(old_key)} as {str(new_key)} has already been applied.")
+                print(f"Deleting {str(old_key)} as {str(delta)} has already been applied.")
                 db.delete_vessel_entry(con, old_key)
                 stats.records_deleted += 1
         # Process any deletes
-        for d in to_delete:
+        for d in to_delete_db:
             db.delete_vessel_entry(con, d)
             stats.records_deleted += 1
 
