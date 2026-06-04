@@ -20,8 +20,8 @@ time python3 -m dcdb.metadata \
 ...
 ...
 ...
-python3 -m dcdb.metadata ../local/csbMetadataPayload_20170101-20260325.json    440.20s user 239.07s system 89% cpu 12:36.84 total
-tee ../local/csbMetadataPayload_20170101-20260325.log  0.01s user 0.49s system 0% cpu 12:36.84 total
+python3 -m dcdb.metadata ../local/csbMetadataPayload_20170101-20260325.json    462.65s user 242.00s system 91% cpu 12:53.52 total
+tee ../local/csbMetadataPayload_20170101-20260325.log  0.01s user 0.35s system 0% cpu 12:53.52 total
 ```
 
 The other options are described using the `--help` option:
