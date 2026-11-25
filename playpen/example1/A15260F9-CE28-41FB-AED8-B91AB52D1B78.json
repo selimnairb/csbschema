@@ -1,0 +1,72 @@
+{
+    "platform": {
+      "uniqueID": "OFM-72b748d0-9890-11f0-bdd5-b1670927a4f1",
+      "name": "NIWA Orca",
+      "sensors": [
+        {
+          "type": "Sounder",
+          "make": "Simrad",
+          "model": "S3D-65.1.14",
+          "transducer": "n/a",
+          "position": "[-2.6200,0.7100,2.5920]",
+          "draft": 0.42
+        },
+        {
+          "type": "GNSS",
+          "make": "Simrad",
+          "model": "GS25 Antenna (102472#)",
+          "position": "[0,0,0]"
+        },
+        {
+          "type": "MotionSensor",
+          "make": "CSS Electronics",
+          "model": "CANmod.gps",
+          "position": "[1.9950,0.2150,0.0000]"
+        }
+      ],
+      "length": 7.8,
+      "type": "Government",
+      "IDType": "MMSI",
+      "IDNumber": "MNZ132394"
+    },
+    "time": {
+      "startTime": 1770235403000,
+      "endTime": 1770239014000
+    },
+    "fileType": "xyz",
+    "submissionInfo": {
+      "traceId": "e4f94a55-342a-4ac9-91c5-51a541407e30",
+      "submissionType": "archive",
+      "resolvedPlatformName": "NIWA Orca",
+      "provisionedOrgName": "Orange Force Marine",
+      "providerId": "OFM",
+      "platformId": "72b748d0-9890-11f0-bdd5-b1670927a4f1",
+      "year": "2026",
+      "timeCode": "20260204211535126935",
+      "simplificationTolerance": 0.001
+    },
+    "dataProcessed": false,
+    "convention": "XYZ CSB 3.0",
+    "dataLicense": "CCO 1.0",
+    "correctors": {
+      "positionReferencePoint": "GNSS",
+      "soundSpeedDocumented": "False",
+      "positionOffsetDocumented": "False",
+      "dataProcessed": "False",
+      "motionOffsetsApplied": "False",
+      "draftApplied": "False"
+    },
+    "crs": {
+      "horizontal": {
+        "type": "EPSG",
+        "value": 4326
+      },
+      "vertical": "Transducer"
+    },
+    "providerContactPoint": {
+      "orgName": "Orange Force Marine",
+      "email": "dniles@orangeforcemarine.com",
+      "logger": "mussel",
+      "loggerVersion": "3.0"
+    }
+  }

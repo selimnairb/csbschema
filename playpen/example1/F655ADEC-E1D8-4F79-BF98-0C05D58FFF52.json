@@ -1,0 +1,65 @@
+{
+  "platform": {
+    "uniqueID": "SIGNALK-ac020bdf-5c0e-4c82-844f-1db2bc73383a",
+    "name": "Lille Oe",
+    "sensors": [
+      {
+        "type": "Sounder",
+        "make": "Garmin",
+        "model": "P79",
+        "position": [
+          0.5,
+          2,
+          0.3
+        ],
+        "draft": 1.55,
+        "frequency": 50
+      },
+      {
+        "type": "GNSS",
+        "make": "B&G",
+        "model": "ZG100",
+        "position": [
+          0,
+          9,
+          1
+        ]
+      }
+    ],
+    "dataProcessed": false,
+    "positionOffsetsDocumented": true,
+    "length": 9.36,
+    "type": "Sailing",
+    "IDType": "MMSI",
+    "IDNumber": "211692440"
+  },
+  "time": {
+    "startTime": 1641211591000,
+    "endTime": 1641232799000
+  },
+  "fileType": "geojson",
+  "submissionInfo": {
+    "traceId": "2d52dd66-f37a-4911-9981-5519f750a64d",
+    "submissionType": "archive",
+    "resolvedPlatformName": "Lille Oe",
+    "provisionedOrgName": "Signal K",
+    "providerId": "SIGNALK",
+    "platformId": "ac020bdf-5c0e-4c82-844f-1db2bc73383a",
+    "year": "2026",
+    "timeCode": "20260205175516141104",
+    "simplificationTolerance": 0.001
+  },
+  "dataProcessed": false,
+  "trustedNode": {
+    "providerOrganizationName": "Open Water Software",
+    "providerEmail": "bathy@openwaters.io",
+    "uniqueVesselID": "SIGNALK-ac020bdf-5c0e-4c82-844f-1db2bc73383a",
+    "convention": "GeoJSON CSB 3.1",
+    "dataLicense": "CC0 1.0",
+    "providerLogger": "crowd-depth (https://github.com/openwatersio/crowd-depth)",
+    "providerLoggerVersion": "1.0.0-beta.12",
+    "navigationCRS": "EPSG:4326",
+    "verticalReferenceOfDepth": "Waterline",
+    "vesselPositionReferencePoint": "Transducer"
+  }
+}
